@@ -190,6 +190,14 @@ class TranslationCache:
         for lang_code, lang_data in translations_by_lang.items():
             lang_file_path = self.translations_path / f"{lang_code}.json"
             try:
+                # Add detailed logging before writing to the file
+                logger.debug(
+                    f"Preparing to save data for '{lang_code}' to {lang_file_path}"
+                )
+                logger.debug(
+                    f"Data to be saved: {json.dumps(lang_data, indent=2, ensure_ascii=False, cls=CustomEncoder)}"
+                )
+
                 with open(lang_file_path, "w", encoding="utf-8") as f:
                     json.dump(
                         lang_data, f, indent=2, ensure_ascii=False, cls=CustomEncoder

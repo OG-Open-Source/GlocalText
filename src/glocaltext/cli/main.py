@@ -220,7 +220,6 @@ def run(
     new_state = {
         "source_hashes": current_source_hashes,
         "localized_hashes": new_localized_hashes,
-        "localized_hashes": current_localized_hashes,
         "extracted_strings": {k: v.dict() for k, v in current_strings.items()},
     }
     cache.save_state(new_state)

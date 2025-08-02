@@ -161,7 +161,7 @@ class L10nProcessor:
                 if not cached_entry:
                     cached_entry = CacheEntry(source_text=extracted_string.text)
                     self.cache.set(hash_id, cached_entry)
-                
+
                 if source_lang not in cached_entry.translations:
                     logger.debug(f"Adding source language entry for {hash_id}")
                     source_translation = TranslationValue(
