@@ -61,15 +61,10 @@ class Compiler:
                     source_text
                 ] = translation_value.get_translation()
 
-        logger.debug(
-            f"Grouped translations for languages: {list(lang_to_translations.keys())}"
-        )
-
-        # 2. Iterate through each target language and compile files
+        # 2. Iterate through each language with available translations and compile
         for lang_code, translations in lang_to_translations.items():
             localized_lang_path = localized_path / lang_code
-            logger.debug(f"Processing language: {lang_code}")
-            localized_lang_path.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Processing language: {lang_code}")
 
             # Clean and create the language-specific output directory
             if localized_lang_path.exists():
@@ -85,21 +80,13 @@ class Compiler:
             )
             logger.debug(f"Copied project structure to {localized_lang_path}")
 
-            # 3. Iterate through every processed source file to apply translations
+            # 3. Apply translations
             for source_file_path in self.i18n_processor.get_processed_files():
                 if not source_file_path.is_file():
                     continue
                 try:
                     relative_path = source_file_path.relative_to(project_path.resolve())
                     target_file_path = localized_lang_path / relative_path
-
-                    # Ensure parent directory exists
-                    target_file_path.parent.mkdir(parents=True, exist_ok=True)
-
-                    # If the localized file does not exist, copy it from the source
-                    if not target_file_path.exists():
-                        shutil.copy2(source_file_path, target_file_path)
-                        logger.debug(f"  Copied new file to '{target_file_path}'")
 
                     logger.debug(f"  Applying translations to '{target_file_path}'")
                     content = target_file_path.read_text(encoding="utf-8")
@@ -121,4 +108,4 @@ class Compiler:
                         f"Error processing file {source_file_path} for language {lang_code}: {e}"
                     )
                     continue
-        logger.debug("Compiler run finished.")
+        logger.info("Compiler run finished.")

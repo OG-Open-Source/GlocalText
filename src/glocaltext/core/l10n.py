@@ -153,6 +153,25 @@ class L10nProcessor:
             f"Starting localization process for {len(all_strings)} unique strings."
         )
 
+        def _ensure_source_lang_in_cache():
+            """Ensure source language is in cache for all strings."""
+            source_lang = self.config.translation_settings.source_lang
+            for hash_id, extracted_string in all_strings.items():
+                cached_entry = self.cache.get(hash_id)
+                if not cached_entry:
+                    cached_entry = CacheEntry(source_text=extracted_string.text)
+                    self.cache.set(hash_id, cached_entry)
+                
+                if source_lang not in cached_entry.translations:
+                    logger.debug(f"Adding source language entry for {hash_id}")
+                    source_translation = TranslationValue(
+                        original_translation=extracted_string.text,
+                        current_translation=extracted_string.text,
+                    )
+                    cached_entry.translations[source_lang] = source_translation
+                    self.cache.set(hash_id, cached_entry)
+
+        _ensure_source_lang_in_cache()
         strings_to_translate: List[Tuple[str, str]] = []  # (hash_id, text)
 
         for hash_id, extracted_string in all_strings.items():
