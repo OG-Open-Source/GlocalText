@@ -32,15 +32,17 @@ jobs:
           # Get the previous tag. If there's no previous tag, this will be empty.
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 `git rev-list --tags --skip=1 --max-count=1` || echo "")
 
-          # Generate the list of commit summaries
+          # Generate the list of commit summaries and contributors
           if [ -z "$PREVIOUS_TAG" ]; then
             echo "No previous tag found. Creating changelog from the first commit."
             CHANGELOG=$(git log ${{ github.ref_name }} --pretty=format:'* %s (`%h`)')
+            CONTRIBUTORS=$(git log ${{ github.ref_name }} --pretty=format:'* @%an' | sort -u)
             # Generate the Full Changelog URL for the first release
             FULL_CHANGELOG_URL="https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}"
           else
             echo "Generating changelog from $PREVIOUS_TAG to ${{ github.ref_name }}"
             CHANGELOG=$(git log $PREVIOUS_TAG...${{ github.ref_name }} --pretty=format:'* %s (`%h`)')
+            CONTRIBUTORS=$(git log $PREVIOUS_TAG...${{ github.ref_name }} --pretty=format:'* @%an' | sort -u)
             # Generate the Full Changelog URL for subsequent releases
             FULL_CHANGELOG_URL="https://github.com/${{ github.repository }}/compare/$PREVIOUS_TAG...${{ github.ref_name }}"
           fi
@@ -49,6 +51,9 @@ jobs:
           cat <<EOF > changelog.md
           ### What's Changed
           ${CHANGELOG}
+
+          ### New Contributors
+          ${CONTRIBUTORS}
 
           **Full Changelog**: ${FULL_CHANGELOG_URL}
           EOF

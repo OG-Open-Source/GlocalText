@@ -16,6 +16,7 @@ GlocalText 是一個功能強大的命令列工具，旨在自動化和簡化軟
 - [快速入門](#快速入門)
 - [指令參考](#指令參考)
 - [設定](#設定)
+- [貢獻者](#貢獻者)
 - [貢獻](#貢獻)
 - [授權](#授權)
 
@@ -167,6 +168,12 @@ protection_rules:
   # 保護不被翻譯的子字串的正規表示式模式（例如，變數）
   - "{.*?}"
 ```
+
+## 貢獻者
+
+<a href="https://github.com/OG-Open-Source/GlocalText/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=OG-Open-Source/GlocalText" />
+</a>
 
 ## 貢獻
 

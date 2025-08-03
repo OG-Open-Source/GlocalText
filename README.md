@@ -16,6 +16,7 @@ Its key feature is a **round-trip workflow**, allowing you to manually refine ma
 - [Quick Start](#quick-start)
 - [Command Reference](#command-reference)
 - [Configuration](#configuration)
+- [Contributors](#contributors)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -167,6 +168,12 @@ protection_rules:
   # Regex patterns for substrings to protect from translation (e.g., variables)
   - "{.*?}"
 ```
+
+## Contributors
+
+<a href="https://github.com/OG-Open-Source/GlocalText/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=OG-Open-Source/GlocalText" />
+</a>
 
 ## Contributing
 
