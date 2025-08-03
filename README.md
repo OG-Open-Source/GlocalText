@@ -1,10 +1,6 @@
-<!-- You cannot delete 3 items in the part of the table of contents, Introduction, Contributing, License -->
-
 # GlocalText
 
-GlocalText is a powerful command-line tool designed to automate and streamline the software localization process. It extracts strings from your source code, translates them using various AI and machine translation providers, and compiles a fully translated version of your project.
-
-Its key feature is a **round-trip workflow**, allowing you to manually refine machine translations and sync your changes back into the system, ensuring your edits are preserved and reused.
+A CLI tool for automated i18n and l10n of software projects.
 
 ---
 
