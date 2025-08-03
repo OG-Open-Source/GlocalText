@@ -1,4 +1,27 @@
-# GlocalText: Seamless Software Localization
+<!-- You cannot delete 3 items in the part of the table of contents, Introduction, Contributing, License -->
+
+# GlocalText
+
+GlocalText is a powerful command-line tool designed to automate and streamline the software localization process. It extracts strings from your source code, translates them using various AI and machine translation providers, and compiles a fully translated version of your project.
+
+Its key feature is a **round-trip workflow**, allowing you to manually refine machine translations and sync your changes back into the system, ensuring your edits are preserved and reused.
+
+---
+
+## Table of Contents
+
+- [Introduction](#introduction)
+- [Features](#features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Command Reference](#command-reference)
+- [Configuration](#configuration)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+## Introduction
 
 GlocalText is a powerful command-line tool designed to automate and streamline the software localization process. It extracts strings from your source code, translates them using various AI and machine translation providers, and compiles a fully translated version of your project.
 
@@ -110,9 +133,11 @@ source:
     - "**/*.py" # Glob patterns for files to include
   exclude:
     - "tests/*" # Glob patterns for files to exclude
-rules:
+capture_rules:
   - pattern: '_\("(.*?)"\)' # Regex to find strings
     capture_group: 1 # The regex capture group containing the text
+ignore_rules:
+  - pattern: "<code>.*?</code>" # Regex for entire blocks to ignore
 ```
 
 ### `l10n-rules.yaml`
@@ -143,10 +168,17 @@ protection_rules:
   - "{.*?}"
 ```
 
-## How to Contribute
+## Contributing
 
-Contributions are welcome! Please feel free to submit a pull request or open an issue.
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Open a Pull Request
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This repository is licensed under the [MIT License](https://opensource.org/license/MIT).
+
+---
+
+© 2025 [OG-Open-Source](https://github.com/OG-Open-Source). All rights reserved.
