@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "GlocalText"
-version = "1.2.0"
+version = "1.2.1"
 description = "A CLI tool for automated i18n and l10n of software projects."
 authors = [{ name = "OG-Open-Source" }]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
     "pydantic",
     "pyyaml",
