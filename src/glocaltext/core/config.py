@@ -45,7 +45,8 @@ class I18nConfig(BaseConfig):
     """Configuration for the internationalization (i18n) process."""
 
     source: I18nSource
-    rules: List[ExtractionRule]
+    capture_rules: List[ExtractionRule]
+    ignore_rules: List[ExtractionRule] = Field(default_factory=list)
 
 
 # ======================================================================================

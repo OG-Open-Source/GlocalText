@@ -4,7 +4,7 @@ import xxhash
 import typing
 import logging
 from pathlib import Path
-from typing import Dict, Set
+from typing import Dict, Set, List, Tuple
 
 from pydantic import BaseModel, Field
 
@@ -122,10 +122,31 @@ class I18nProcessor:
             try:
                 original_content = file_path.read_text(encoding="utf-8")
 
-                for rule in self.config.rules:
+                # Step 1: Find all character ranges to ignore.
+                ignored_ranges: List[Tuple[int, int]] = []
+                for rule in self.config.ignore_rules:
                     for match in re.finditer(
                         rule.pattern, original_content, re.DOTALL | re.MULTILINE
                     ):
+                        ignored_ranges.append((match.start(), match.end()))
+
+                # Step 2: Extract strings, but only if they don't fall within an ignored range.
+                for rule in self.config.capture_rules:
+                    for match in re.finditer(
+                        rule.pattern, original_content, re.DOTALL | re.MULTILINE
+                    ):
+                        # Check if the entire match is within any ignored range.
+                        is_ignored = False
+                        for start, end in ignored_ranges:
+                            if match.start() >= start and match.end() <= end:
+                                logger.debug(
+                                    f"  - Ignoring match '{match.group(0)[:50]}...' because it falls within an ignored range ({start}, {end})."
+                                )
+                                is_ignored = True
+                                break
+                        if is_ignored:
+                            continue
+
                         try:
                             extracted_text = match.group(rule.capture_group)
                             line_number = (
@@ -171,7 +192,10 @@ class I18nProcessor:
         logger.debug(f"Extracting raw strings from: {file_path}")
         try:
             content = file_path.read_text(encoding="utf-8")
-            for rule in self.config.rules:
+
+            # Note: sync does not currently use ignore_rules as it compares source and localized files directly.
+            # This could be a future enhancement if needed.
+            for rule in self.config.capture_rules:
                 for match in re.finditer(
                     rule.pattern, content, re.DOTALL | re.MULTILINE
                 ):

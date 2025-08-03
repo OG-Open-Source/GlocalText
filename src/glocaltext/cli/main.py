@@ -52,34 +52,37 @@ def init(
         )
         raise typer.Abort()
 
-    # Create default i18n-rules.yaml based on I18nConfig model
+    # Create default i18n-rules.yaml
     default_i18n_config = {
-        "source": {"include": ["**/*.*"], "exclude": ["tests/*", "docs/*", ".ogos/*"]},
-        "rules": [{"pattern": r"_\(\s*f?[\"'](.*?)[\"']\s*\)", "capture_group": 1}],
+        "source": {
+            "include": ["**/*.*"],
+            "exclude": ["tests/*", "docs/*", ".ogos/*", "localized/*"],
+        },
+        "capture_rules": [
+            {"pattern": r"_\(\s*f?[\"'](.*?)[\"']\s*\)", "capture_group": 1}
+        ],
+        "ignore_rules": [],
     }
     with open(i18n_config_path, "w", encoding="utf-8") as f:
         yaml.dump(default_i18n_config, f, allow_unicode=True, sort_keys=False)
     logger.info(f"Created default i18n configuration at: {i18n_config_path}")
 
-    # Create default l10n-rules.yaml based on L10nConfig model
+    # Create default l10n-rules.yaml
     default_l10n_config = {
         "translation_settings": {
             "source_lang": "en",
             "target_lang": ["ja", "zh-TW"],
-            "provider": "gemini",
+            "provider": "google",
         },
         "provider_configs": {
-            "gemini": {
-                "model": "gemini-1.5-flash",
-                "api_key": "YOUR_GEMINI_API_KEY_HERE",
-            },
+            "gemini": {"model": "GEMINI_MODEL_NAME", "api_key": "GEMINI_API_KEY"},
             "openai": {
-                "model": "gpt-4o",
+                "model": "OPENAI_MODEL_NAME",
                 "base_url": "https://api.openai.com/v1",
-                "api_key": "YOUR_OPENAI_API_KEY_HERE",
+                "api_key": "OPENAI_API_KEY",
                 "prompts": {
                     "system": "You are a professional translator. Translate the user's text to {target_lang}.",
-                    "contxt": "Translate the following from {source_lang}: {text}",
+                    "contxt": "Translate the following from {source_lang} to {target_lang}: {text}",
                 },
             },
             "ollama": {"model": "llama3", "base_url": "http://localhost:11434"},
@@ -146,7 +149,7 @@ def run(
         for p in i18n_processor.get_processed_files()
     }
 
-    localized_path = base_path / ".ogos" / "localized"
+    localized_path = ogos_path / "localized"
     current_localized_hashes = {}
     if localized_path.exists():
         for lang_dir in localized_path.iterdir():
