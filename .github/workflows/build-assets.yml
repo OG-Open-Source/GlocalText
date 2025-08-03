@@ -4,7 +4,7 @@
 name: Build Release Assets
 
 on:
-  workflow_dispatch:
+  workflow_call:
 
 jobs:
   build:
