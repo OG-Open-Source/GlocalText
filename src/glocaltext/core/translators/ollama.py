@@ -61,13 +61,13 @@ class OllamaTranslator(Translator):
             )
             payload = {"model": self.config.model, "prompt": prompt, "stream": False}
 
-            logger.debug(f"Sending request to Ollama. Prompt: {prompt}")
+            logger.debug(f"[Ollama] Inp: {prompt}")
 
             try:
                 response = requests.post(full_url, json=payload)
                 response.raise_for_status()
                 response_json = response.json()
-                logger.debug(f"Received response from Ollama: {response_json}")
+                logger.debug(f"[Ollama] Oup: {response_json}")
                 translated_text = response_json.get("response", "").strip()
                 translated_texts.append(translated_text)
             except requests.exceptions.RequestException as e:

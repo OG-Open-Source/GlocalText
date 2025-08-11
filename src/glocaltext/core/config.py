@@ -7,9 +7,9 @@ using Pydantic models.
 
 import yaml
 from pathlib import Path
-from typing import List, Optional, Literal, Dict
+from typing import List, Optional, Literal, Dict, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class BaseConfig(BaseModel):
@@ -41,12 +41,37 @@ class I18nSource(BaseModel):
     exclude: List[str] = []
 
 
+class ProtectionRule(BaseModel):
+    """Defines a regex pattern for protecting parts of a string from translation."""
+
+    pattern: str
+
+
 class I18nConfig(BaseConfig):
     """Configuration for the internationalization (i18n) process."""
 
     source: I18nSource
     capture_rules: List[ExtractionRule]
     ignore_rules: List[ExtractionRule] = Field(default_factory=list)
+    protection_rules: List[ProtectionRule] = Field(default_factory=list)
+
+    @field_validator("capture_rules", "ignore_rules", "protection_rules", mode="before")
+    @classmethod
+    def convert_str_to_extraction_rule(cls, v: Any) -> Any:
+        """Allow users to provide a simple list of strings for rules."""
+        if not isinstance(v, list):
+            return v  # Let default validation handle non-list types
+
+        processed_rules = []
+        for item in v:
+            if isinstance(item, str):
+                # If a simple string is provided, convert it to a dict
+                # that matches the ExtractionRule model.
+                processed_rules.append({"pattern": item})
+            else:
+                # If it's already a dict or something else, pass it through.
+                processed_rules.append(item)
+        return processed_rules
 
 
 # ======================================================================================
@@ -90,7 +115,7 @@ class OpenAIConfig(BaseModel):
     model: str
     base_url: str
     api_key: str
-    prompts: OpenAIPrompts
+    prompts: Optional[OpenAIPrompts] = None
 
 
 class OllamaConfig(BaseModel):
@@ -115,7 +140,6 @@ class L10nConfig(BaseConfig):
     provider_configs: Optional[ProviderConfigs] = Field(default_factory=ProviderConfigs)
     glossary: Optional[Dict[str, str]] = None
     glossary_file: Optional[str] = None
-    protection_rules: List[str] = Field(default_factory=list)
 
 
 # ======================================================================================

@@ -11,6 +11,10 @@ A CLI tool for automated i18n and l10n of software projects.
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Command Reference](#command-reference)
+  - [`init`](#glocaltext-init)
+  - [`i18n`](#glocaltext-i18n)
+  - [`l10n` / `run`](#glocaltext-l10n--run-path)
+  - [`sync`](#glocaltext-sync-path)
 - [Configuration](#configuration)
 - [Contributors](#contributors)
 - [Contributing](#contributing)
@@ -63,19 +67,25 @@ This creates a `.ogos` directory with two configuration files:
 - **Edit `i18n-rules.yaml`** to define the regex pattern for extracting strings from your code.
 - **Edit `l10n-rules.yaml`** to set your target languages and configure your chosen translation provider, including API keys.
 
-### 3. First Run: Machine Translation
+### 3. Run Extraction and Translation
 
 Run the localization process:
 
 ```bash
-glocaltext run .
+glocaltext l10n
 ```
 
-GlocalText will:
+This command performs the full workflow:
 
-1. Scan your source code for strings.
-2. Send new strings to your chosen translation provider.
-3. Create a translated copy of your project in `.ogos/localized/`.
+1.  **Extract**: Scans your source code for strings based on `i18n-rules.yaml`.
+2.  **Translate**: Sends new or modified strings to your chosen translation provider.
+3.  **Compile**: Creates a translated copy of your project in `.ogos/localized/`.
+
+You can also run the extraction step separately:
+
+```bash
+glocaltext i18n
+```
 
 ### 4. Manual Refinement
 
@@ -88,14 +98,14 @@ For example, you might change a translated string from `"申請開始..."` to `"
 After making manual edits, sync them back to the GlocalText cache:
 
 ```bash
-glocaltext sync .
+glocaltext sync
 ```
 
 This command reads your changes from the `localized` directory and updates the translation cache, storing your edits as a `manual_override`.
 
 ### 6. Subsequent Runs
 
-Now, when you run `glocaltext run .` again (e.g., after adding new source code), the compiler will use your synced manual overrides instead of the original machine translation, ensuring your refinements are always preserved.
+Now, when you run `glocaltext l10n` again (e.g., after adding new source code), the compiler will use your synced manual overrides instead of the original machine translation, ensuring your refinements are always preserved.
 
 ## Command Reference
 
@@ -103,19 +113,27 @@ Now, when you run `glocaltext run .` again (e.g., after adding new source code),
 
 Initializes the configuration files in the `.ogos` directory.
 
-### `glocaltext run [PATH]`
+### `glocaltext i18n`
 
-Executes the main localization workflow: extract, translate, and compile.
+Scans source files and extracts strings based on `i18n-rules.yaml`, saving them to intermediate artifact files. This step does not perform any translation.
 
-- **`PATH`**: The path to the project directory to process (default: current directory).
+- **`--project-path`, `-p`**: The root path of the project to scan (default: current directory).
+- **`--config`, `-c`**: Path to a specific `i18n-rules.yaml` file.
+- **`--debug`, `-d`**: Enable verbose debug logging.
+
+### `glocaltext l10n` / `run [PATH]`
+
+Executes the main localization workflow: extract, translate, and compile. The `run` command is an alias for `l10n`.
+
+- **`--project-path`, `-p`**: The path to the project directory to process (default: current directory).
 - **`--force`, `-f`**: Force re-translation of all strings, ignoring the cache.
 - **`--debug`, `-d`**: Enable verbose debug logging.
 
-### `glocaltext sync [PATH]`
+### `glocaltext sync`
 
 Syncs manual changes from the `localized` directory back to the translation cache.
 
-- **`PATH`**: The path to the project directory to sync (default: current directory).
+- **`--project-path`, `-p`**: The path to the project directory to sync (default: current directory).
 - **`--debug`, `-d`**: Enable verbose debug logging.
 
 ## Configuration
@@ -135,6 +153,9 @@ capture_rules:
     capture_group: 1 # The regex capture group containing the text
 ignore_rules:
   - pattern: "<code>.*?</code>" # Regex for entire blocks to ignore
+protection_rules:
+  # Regex patterns for substrings to protect from translation (e.g., variables)
+  - pattern: "{.*?}"
 ```
 
 ### `l10n-rules.yaml`
@@ -151,18 +172,25 @@ provider_configs:
   gemini:
     model: "gemini-1.5-flash"
     api_key: "YOUR_GEMINI_API_KEY"
+    # Prompts are optional. If omitted, a default prompt will be used.
+    prompts:
+      system: "You are an expert translator..."
+      contxt: "Translate the following from {source_lang} to {target_lang}: {text}"
   openai:
     model: "gpt-4o"
     api_key: "YOUR_OPENAI_API_KEY"
-  # ... other provider configs
+    base_url: "https://api.openai.com/v1"
+    # Prompts are optional.
+    prompts:
+      system: "You are a professional translator."
+      contxt: "Translate the following text from {source_lang} to {target_lang}: {text}"
+  ollama:
+    model: "llama3"
+    base_url: "http://localhost:11434"
 
 glossary:
   # Terms that should not be translated
   "GlocalText": "GlocalText"
-
-protection_rules:
-  # Regex patterns for substrings to protect from translation (e.g., variables)
-  - "{.*?}"
 ```
 
 ## Contributors

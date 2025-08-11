@@ -7,23 +7,19 @@ from pydantic import BaseModel, Field, ValidationError
 
 # This needs to be imported for the new methods
 from glocaltext.core.i18n import ExtractedString
+from glocaltext.utils.debug_logger import DebugLogger
 
 logger = logging.getLogger(__name__)
 
 
 class TranslationValue(BaseModel):
     """
-    Represents the translation details for a single language,
-    including the original machine translation and an optional manual override.
+    Represents the translation details for a single language.
     """
 
-    original_translation: str = Field(
+    text: str = Field(
         ...,
-        description="The immutable, original machine translation received from the provider.",
-    )
-    current_translation: str = Field(
-        ...,
-        description="The current translation, which may be the original or an updated machine translation.",
+        description="The current translation text.",
     )
     manual_override: Optional[str] = Field(
         None,
@@ -38,11 +34,7 @@ class TranslationValue(BaseModel):
         """
         Returns the definitive translation, prioritizing manual override.
         """
-        return (
-            self.manual_override
-            if self.manual_override is not None
-            else self.current_translation
-        )
+        return self.manual_override if self.manual_override is not None else self.text
 
 
 class CacheEntry(BaseModel):
@@ -65,77 +57,47 @@ class CacheEntry(BaseModel):
 
 class TranslationCache:
     """
-    Manages a JSON-based cache for translations to avoid redundant API calls.
+    Manages a unified, JSON-based cache for translations to avoid redundant API calls.
     The cache structure is: {hash_id: CacheEntry}
     """
 
-    def __init__(self, cache_file_path: Path):
+    def __init__(self, artifacts_path: Path, debug_logger: DebugLogger):
         """
         Initializes the TranslationCache.
 
         Args:
-            cache_file_path: The direct path to the cache JSON file.
+            artifacts_path: The path to the directory where artifacts are stored.
+            debug_logger: An instance of the debug logger.
         """
-        self.artifacts_path = cache_file_path.parent
-        self.translations_path = self.artifacts_path / "translations"
-        self.state_path = self.artifacts_path / "state.json"
-
-        # Ensure the directories exist.
+        self.artifacts_path = artifacts_path
+        self.debug_logger = debug_logger if debug_logger else DebugLogger(Path(), False)
+        self.cache_file_path = self.artifacts_path / "translations.json"
         self.artifacts_path.mkdir(parents=True, exist_ok=True)
-        self.translations_path.mkdir(parents=True, exist_ok=True)
 
-        logger.debug(f"Artifacts path initialized to: {self.artifacts_path}")
-        self.cache: Dict[str, CacheEntry] = {}
-        self.load()
+        logger.debug(f"Cache file path initialized to: {self.cache_file_path}")
+        self.cache: Dict[str, CacheEntry] = self._load()
 
-    def load(self):
+    def _load(self) -> Dict[str, CacheEntry]:
         """
-        Loads the cache from the JSON file if it exists.
-        Handles potential errors and validates the cache structure.
+        Loads the cache from a single JSON file if it exists.
         """
-        logger.debug(f"Attempting to load cache from {self.translations_path}")
-        if not self.translations_path.exists():
-            logger.debug(
-                "Translations directory does not exist. Starting with an empty cache."
-            )
-            self.cache = {}
-            return
+        if not self.cache_file_path.exists():
+            logger.debug("Cache file not found. Starting with an empty cache.")
+            return {}
 
-        for lang_file in self.translations_path.glob("*.json"):
-            try:
-                lang_code = lang_file.stem
-                with open(lang_file, "r", encoding="utf-8") as f:
-                    lang_data = json.load(f)
-
-                for hash_id, entry_data in lang_data.items():
-                    if hash_id not in self.cache:
-                        # Assuming the source_text is stored with the translation
-                        if "source_text" in entry_data:
-                            self.cache[hash_id] = CacheEntry(
-                                source_text=entry_data["source_text"]
-                            )
-                        else:
-                            # This case should be handled, maybe by loading source text from state
-                            logger.warning(
-                                f"Source text missing for {hash_id} in {lang_file}, skipping."
-                            )
-                            continue
-
-                    try:
-                        translation_value = TranslationValue.parse_obj(entry_data)
-                        self.cache[hash_id].translations[lang_code] = translation_value
-                    except ValidationError as e:
-                        logger.warning(
-                            f"Skipping invalid translation entry for {hash_id} in {lang_file}: {e}"
-                        )
-
-            except (json.JSONDecodeError, FileNotFoundError) as e:
-                logger.warning(
-                    f"Translation file {lang_file} not found or is corrupted ({e})."
-                )
-        logger.debug(
-            f"Finished processing translations. Loaded {len(self.cache)} total entries."
-        )
+        logger.debug(f"Attempting to load cache from {self.cache_file_path}")
+        try:
+            with open(self.cache_file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                # Use Pydantic to parse the entire dictionary
+                return {
+                    hash_id: CacheEntry.parse_obj(entry_data)
+                    for hash_id, entry_data in data.items()
+                }
+        except (json.JSONDecodeError, ValidationError) as e:
+            logger.error(f"Cache file is corrupted or has invalid data: {e}")
+            # In case of corruption, it's safer to start fresh
+            return {}
 
     def get(self, hash_id: str) -> Optional[CacheEntry]:
         """
@@ -163,52 +125,32 @@ class TranslationCache:
 
     def save(self):
         """
-        Saves the current state of the cache to language-specific JSON files.
+        Saves the current state of the cache to a single JSON file.
         """
         logger.debug(
-            f"Saving cache with {len(self.cache)} entries to {self.translations_path}"
+            f"Saving cache with {len(self.cache)} entries to {self.cache_file_path}"
         )
-
-        translations_by_lang = {}
-        for hash_id, entry in self.cache.items():
-            for lang_code, translation_value in entry.translations.items():
-                if lang_code not in translations_by_lang:
-                    translations_by_lang[lang_code] = {}
-
-                # Include source_text in each language file for context
-                translations_by_lang[lang_code][hash_id] = {
-                    "source_text": entry.source_text,
-                    **translation_value.dict(),
-                }
 
         class CustomEncoder(json.JSONEncoder):
             def default(self, o):
                 if isinstance(o, datetime):
                     return o.isoformat()
+                if isinstance(o, BaseModel):
+                    return o.dict()
                 return super().default(o)
 
-        for lang_code, lang_data in translations_by_lang.items():
-            lang_file_path = self.translations_path / f"{lang_code}.json"
-            try:
-                # Add detailed logging before writing to the file
-                logger.debug(
-                    f"Preparing to save data for '{lang_code}' to {lang_file_path}"
+        try:
+            # Serialize the entire cache dictionary
+            cache_data = {
+                hash_id: entry.dict() for hash_id, entry in self.cache.items()
+            }
+            with open(self.cache_file_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    cache_data, f, indent=2, ensure_ascii=False, cls=CustomEncoder
                 )
-                logger.debug(
-                    f"Data to be saved: {json.dumps(lang_data, indent=2, ensure_ascii=False, cls=CustomEncoder)}"
-                )
-
-                with open(lang_file_path, "w", encoding="utf-8") as f:
-                    json.dump(
-                        lang_data, f, indent=2, ensure_ascii=False, cls=CustomEncoder
-                    )
-                logger.debug(
-                    f"Successfully saved translations for '{lang_code}' to {lang_file_path}"
-                )
-            except IOError as e:
-                logger.error(
-                    f"Failed to save translations for '{lang_code}' to {lang_file_path}: {e}"
-                )
+            logger.debug("Cache saved successfully.")
+        except IOError as e:
+            logger.error(f"Failed to save cache file to {self.cache_file_path}: {e}")
 
     def update_with_manual_overrides(self, overrides: Dict[Tuple[str, str], str]):
         """
@@ -263,44 +205,21 @@ class TranslationCache:
             langs.update(entry.translations.keys())
         return langs
 
-    def get_state(self) -> Dict:
-        """Loads the state from the state file."""
-        if not self.state_path.exists():
-            return {}
-        try:
-            with self.state_path.open("r", encoding="utf-8") as f:
-                return json.load(f)
-        except (json.JSONDecodeError, FileNotFoundError):
-            return {}
-
-    def save_state(self, state_data: Dict):
-        """Saves the given state data to the state file."""
-        logger.debug(f"Saving state to {self.state_path}")
-
-        class CustomEncoder(json.JSONEncoder):
-            def default(self, o):
-                if isinstance(o, Path):
-                    return str(o.as_posix())
-                if isinstance(o, BaseModel):
-                    return o.dict()
-                return super().default(o)
-
-        try:
-            with self.state_path.open("w", encoding="utf-8") as f:
-                json.dump(
-                    state_data, f, indent=2, ensure_ascii=False, cls=CustomEncoder
-                )
-            logger.debug("State file saved successfully.")
-        except IOError as e:
-            logger.error(f"Failed to save state file to {self.state_path}: {e}")
-
     def remove_entries_by_hash(self, hashes_to_remove: Set[str]):
         """Removes all cache entries associated with the given hashes."""
-        logger.debug(f"Removing {len(hashes_to_remove)} entries from cache.")
+        if not hashes_to_remove:
+            logger.debug("No dangling hashes to remove.")
+            return
+
+        log_details = [
+            f"Attempting to remove {len(hashes_to_remove)} dangling entries from cache:"
+        ]
         count = 0
         for hash_id in hashes_to_remove:
             if hash_id in self.cache:
                 del self.cache[hash_id]
-                logger.debug(f"  - Removed cache entry for hash: {hash_id}")
+                log_details.append(f"  - Removed: {hash_id}")
                 count += 1
-        logger.debug(f"Removed {count} entries from the cache.")
+        log_details.append(f"Successfully removed {count} entries.")
+        self.debug_logger.log_step("3. Pruning Cache", "\n".join(log_details))
+        logger.debug(f"Removed {count} dangling entries from the cache.")

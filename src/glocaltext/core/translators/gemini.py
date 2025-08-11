@@ -70,7 +70,7 @@ class GeminiTranslator(Translator):
             prompt = self._build_prompt(
                 text, target_language, source_language, glossary
             )
-            logger.debug(f"Sending request to Gemini API. Prompt: {prompt}")
+            logger.debug(f"[Gemini] Inp: {prompt}")
 
             try:
                 response = self.client.models.generate_content(
@@ -81,7 +81,7 @@ class GeminiTranslator(Translator):
                     ),
                 )
 
-                logger.debug(f"Received response from Gemini API: {response.text}")
+                logger.debug(f"[Gemini] Oup: {response.text}")
                 translated_text = response.text.strip()
                 translated_texts.append(translated_text)
 

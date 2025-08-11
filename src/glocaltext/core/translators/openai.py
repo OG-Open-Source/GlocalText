@@ -43,21 +43,24 @@ class OpenAITranslator(Translator):
     def _build_system_prompt(
         self,
         target_language: str,
+        source_language: str,
         glossary: Optional[Dict[str, str]],
     ) -> str:
         """Builds the system prompt for the OpenAI API."""
-
-        system_prompt = (
-            f"You are a professional translator. Your task is to translate to {target_language}. "
-            "You must follow these rules strictly:\n"
-            "1. ONLY return the translated text. \n"
-            "2. Do NOT include the original text.\n"
-            "3. Do NOT include any explanations, options, or additional formatting.\n"
-        )
+        if self.config.prompts:
+            system_prompt = self.config.prompts.system.format(
+                target_lang=target_language, source_lang=source_language
+            )
+        else:
+            system_prompt = (
+                "You are an expert translator specializing in software localization. "
+                "Your task is to translate text accurately while preserving the original structure, "
+                "placeholders, and variables."
+            )
 
         if glossary:
             glossary_str = ", ".join(f'"{k}": "{v}"' for k, v in glossary.items())
-            system_prompt += f"4. Adhere to this glossary: {glossary_str}\n"
+            system_prompt += f"\n\nAdhere to this glossary: {glossary_str}"
 
         return system_prompt
 
@@ -67,11 +70,21 @@ class OpenAITranslator(Translator):
         text: str,
         system_prompt: str,
         source_language: str,
+        target_language: str,
     ) -> str:
         """Helper function to translate a single piece of text."""
-        user_prompt = f'Translate the following text from {source_language}: "{text}"'
+        if self.config.prompts:
+            user_prompt = self.config.prompts.contxt.format(
+                source_lang=source_language, target_lang=target_language, text=text
+            )
+        else:
+            user_prompt = (
+                f"Translate the following text from '{source_language}' to '{target_language}'. "
+                "Maintain all original formatting, including whitespace, and do not translate "
+                f"placeholders like '{{...}}', '$...', or '%...%'.\n\n'{text}'"
+            )
 
-        logger.debug(f"Sending request to OpenAI API. Prompt: {user_prompt}")
+        logger.debug(f"[OpenAI] Inp: {user_prompt}")
 
         response = self.client.chat.completions.create(
             model=self.config.model,
@@ -80,9 +93,7 @@ class OpenAITranslator(Translator):
                 {"role": "user", "content": user_prompt},
             ],
         )
-        logger.debug(
-            f"Received response from OpenAI API: {response.choices[0].message.content}"
-        )
+        logger.debug(f"[OpenAI] Oup: {response.choices[0].message.content}")
         return response.choices[0].message.content.strip()
 
     def translate(
@@ -96,7 +107,9 @@ class OpenAITranslator(Translator):
         Translates a list of texts using the OpenAI API.
         """
 
-        system_prompt = self._build_system_prompt(target_language, glossary)
+        system_prompt = self._build_system_prompt(
+            target_language, source_language, glossary
+        )
         logger.debug(f"System prompt: {system_prompt}")
 
         translated_texts = []
@@ -108,7 +121,7 @@ class OpenAITranslator(Translator):
 
             try:
                 translated_text = self._translate_single_text(
-                    text, system_prompt, source_language
+                    text, system_prompt, source_language, target_language
                 )
                 translated_texts.append(translated_text)
             except openai.APIError as e:

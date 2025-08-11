@@ -16,6 +16,7 @@ src/glocaltext/core/compiler.py
 src/glocaltext/core/config.py
 src/glocaltext/core/i18n.py
 src/glocaltext/core/l10n.py
+src/glocaltext/core/postprocessor.py
 src/glocaltext/core/sync.py
 src/glocaltext/core/translators/__init__.py
 src/glocaltext/core/translators/base.py
@@ -24,4 +25,9 @@ src/glocaltext/core/translators/gemini.py
 src/glocaltext/core/translators/ollama.py
 src/glocaltext/core/translators/openai.py
 src/glocaltext/utils/__init__.py
+src/glocaltext/utils/debug_logger.py
+src/glocaltext/utils/hashing.py
 src/glocaltext/utils/logger.py
+tests/test_i18n.py
+tests/test_orchestrator.py
+tests/test_postprocessor.py
