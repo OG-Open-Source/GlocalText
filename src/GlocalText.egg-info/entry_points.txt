@@ -1,2 +1,2 @@
 [console_scripts]
-glocaltext = glocaltext.cli.main:app
+glocaltext = glocaltext.__main__:main

@@ -1,197 +1,77 @@
 # GlocalText
 
-A CLI tool for automated i18n and l10n of software projects.
+GlocalText is a powerful command-line tool that automates text translation using a highly intuitive, **firewall-style `rules` system**. It processes text by evaluating a list of rules from top to bottom, giving you precise, predictable control over your localization workflow.
 
 ---
 
 ## Table of Contents
 
-- [Introduction](#introduction)
-- [Features](#features)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Command Reference](#command-reference)
-  - [`init`](#glocaltext-init)
-  - [`i18n`](#glocaltext-i18n)
-  - [`l10n` / `run`](#glocaltext-l10n--run-path)
-  - [`sync`](#glocaltext-sync-path)
-- [Configuration](#configuration)
-- [Contributors](#contributors)
-- [Contributing](#contributing)
-- [License](#license)
+-   [Introduction](#introduction)
+-   [Key Features](#key-features)
+-   [Installation](#installation)
+-   [Configuration (`config.yaml`)](#configuration-configyaml)
+-   [Usage](#usage)
+-   [Contributors](#contributors)
+-   [Contributing](#contributing)
+-   [License](#license)
 
 ---
 
 ## Introduction
 
-GlocalText is a powerful command-line tool designed to automate and streamline the software localization process. It extracts strings from your source code, translates them using various AI and machine translation providers, and compiles a fully translated version of your project.
+GlocalText is a powerful command-line tool that automates text translation using a highly intuitive, **firewall-style `rules` system**. It processes text by evaluating a list of rules from top to bottom, giving you precise, predictable control over your localization workflow.
 
-Its key feature is a **round-trip workflow**, allowing you to manually refine machine translations and sync your changes back into the system, ensuring your edits are preserved and reused.
+At its core, the logic is simple: **for most actions, the first rule that matches wins**. When GlocalText extracts a piece of text, it checks your `rules` one by one. When it finds a matching rule for an action like `skip` or `replace`, it executes it and immediately stops processing for that text.
 
-## Features
+However, the `modify` action behaves differently. It allows for **chainable pre-processing**. A `modify` rule will alter the text and then pass the _modified_ text back into the rules engine, allowing subsequent rules (including other `modify` rules) to act on it before it is finally sent for translation. This enables powerful, step-by-step text manipulation.
 
-- **Automated String Extraction**: Uses customizable regex rules to find user-visible strings in any type of source code.
-- **Multi-Provider Support**: Integrates with modern AI providers like Gemini, OpenAI, and Ollama, as well as standard services like Google Translate.
-- **Round-Trip Workflow**: Manually edit translated files and use the `sync` command to merge your changes back into the translation cache. Your refinements are never lost.
-- **Differential Translation**: Intelligently translates only new or modified strings, saving time and cost.
-- **State Management**: Tracks file versions to detect changes and potential conflicts between source and localized files.
-- **Configuration over Convention**: Highly customizable through simple YAML files.
+This design offers several key advantages:
 
-## Installation
+1.  **Predictable Control**: You know exactly which rule will apply. There's no complex logic to manage—just a straightforward, top-down priority list.
+2.  **Flexible Matching**: Define how a rule identifies text. You can use `exact` for a perfect match or `contains` to find a substring. A `match` condition can be a **single string** or a **list of strings**, allowing for flexible `OR` logic.
+3.  **Default Action**: If no rules match a piece of text, it is sent to the configured translation provider for automated translation.
 
-Install GlocalText using pip:
+This unified, firewall-inspired `rules` engine provides a clear and powerful way to manage your entire translation workflow, from protecting brand names to providing authoritative manual translations.
 
-```bash
-pip install glocaltext
-```
+## Key Features
 
-## Quick Start
+-   **Unified Firewall `rules` Engine**: A single, powerful system to control your entire translation workflow.
+-   **Top-Down Priority**: Rules are evaluated from top to bottom—the first rule that matches wins, providing predictable and precise control.
+-   **Flexible Matching**: Match text with `exact` (full string) or `contains` (substring). The condition can be a single string or a list for flexible `OR` logic.
+-   **Clear Actions**: Define clear actions:
+    -   `skip`: Protects brands, code, and variables from being translated.
+    -   `replace`: Provides an authoritative, final translation, skipping the API.
+    -   `modify`: Pre-processes text by replacing a matched segment before sending it for translation.
+-   **Multiple Provider Support**: Configure and use different translation providers like Google Translate and Google Gemini.
+-   **Task-Based Configuration**: Define multiple, independent translation tasks in a single configuration file.
+-   **Glob Pattern Matching**: Precisely include or exclude files for translation using `glob` patterns.
+-   **Flexible Output Control**: Choose to either modify original files directly (`in_place: true`) or create new, translated versions in a specified path (`in_place: false`).
+-   **Incremental Translation**: Save time and cost by only translating new or modified content.
 
-Here's a complete workflow example.
+## Configuration (`config.yaml`)
 
-### 1. Initialize Your Project
+### `output`
 
-Navigate to your project's root directory and run:
+-   **`in_place`**: A boolean indicating whether to modify files directly (`true`) or write them to a separate directory (`false`). Defaults to `true`.
+-   **`path`**: The output directory path. Required if `in_place` is `false`.
+-   **`filename_suffix`**: A suffix to add to the output filenames (e.g., `_translated`).
+-   **`incremental`**: A boolean (`true` or `false`) to enable or disable incremental translation for this task. When enabled, only new or modified text fragments are sent for translation, saving time and cost. Defaults to `false`.
 
-```bash
-glocaltext init
-```
+### API Key Configuration
 
-This creates a `.ogos` directory with two configuration files:
+API keys are configured under the `providers` section. GlocalText follows a clear priority for API key resolution:
 
-- `i18n-rules.yaml`: Defines rules for finding strings to translate.
-- `l10n-rules.yaml`: Configures your target languages and translation provider (e.g., Gemini, OpenAI).
+1.  **Environment Variable**: It will first check for a dedicated environment variable (e.g., `GEMINI_API_KEY`).
+2.  **Configuration File**: If the environment variable is not set, it will use the `api_key` specified in the `config.yaml` file.
 
-### 2. Configure Your Rules
+This approach allows for flexibility in development (using the config file) and security in production (using environment variables).
 
-- **Edit `i18n-rules.yaml`** to define the regex pattern for extracting strings from your code.
-- **Edit `l10n-rules.yaml`** to set your target languages and configure your chosen translation provider, including API keys.
+## Usage
 
-### 3. Run Extraction and Translation
+### Command-Line Options
 
-Run the localization process:
-
-```bash
-glocaltext l10n
-```
-
-This command performs the full workflow:
-
-1.  **Extract**: Scans your source code for strings based on `i18n-rules.yaml`.
-2.  **Translate**: Sends new or modified strings to your chosen translation provider.
-3.  **Compile**: Creates a translated copy of your project in `.ogos/localized/`.
-
-You can also run the extraction step separately:
-
-```bash
-glocaltext i18n
-```
-
-### 4. Manual Refinement
-
-Browse the files in the `.ogos/localized/` directory. You can now manually edit the translated text in these files to improve quality, fix context-specific issues, or match your brand's tone of voice.
-
-For example, you might change a translated string from `"申請開始..."` to `"應用程式啟動中..."`.
-
-### 5. Sync Your Changes
-
-After making manual edits, sync them back to the GlocalText cache:
-
-```bash
-glocaltext sync
-```
-
-This command reads your changes from the `localized` directory and updates the translation cache, storing your edits as a `manual_override`.
-
-### 6. Subsequent Runs
-
-Now, when you run `glocaltext l10n` again (e.g., after adding new source code), the compiler will use your synced manual overrides instead of the original machine translation, ensuring your refinements are always preserved.
-
-## Command Reference
-
-### `glocaltext init`
-
-Initializes the configuration files in the `.ogos` directory.
-
-### `glocaltext i18n`
-
-Scans source files and extracts strings based on `i18n-rules.yaml`, saving them to intermediate artifact files. This step does not perform any translation.
-
-- **`--project-path`, `-p`**: The root path of the project to scan (default: current directory).
-- **`--config`, `-c`**: Path to a specific `i18n-rules.yaml` file.
-- **`--debug`, `-d`**: Enable verbose debug logging.
-
-### `glocaltext l10n` / `run [PATH]`
-
-Executes the main localization workflow: extract, translate, and compile. The `run` command is an alias for `l10n`.
-
-- **`--project-path`, `-p`**: The path to the project directory to process (default: current directory).
-- **`--force`, `-f`**: Force re-translation of all strings, ignoring the cache.
-- **`--debug`, `-d`**: Enable verbose debug logging.
-
-### `glocaltext sync`
-
-Syncs manual changes from the `localized` directory back to the translation cache.
-
-- **`--project-path`, `-p`**: The path to the project directory to sync (default: current directory).
-- **`--debug`, `-d`**: Enable verbose debug logging.
-
-## Configuration
-
-### `i18n-rules.yaml`
-
-Controls how strings are found (Internationalization).
-
-```yaml
-source:
-  include:
-    - "**/*.py" # Glob patterns for files to include
-  exclude:
-    - "tests/*" # Glob patterns for files to exclude
-capture_rules:
-  - pattern: '_\("(.*?)"\)' # Regex to find strings
-    capture_group: 1 # The regex capture group containing the text
-ignore_rules:
-  - pattern: "<code>.*?</code>" # Regex for entire blocks to ignore
-protection_rules:
-  # Regex patterns for substrings to protect from translation (e.g., variables)
-  - pattern: "{.*?}"
-```
-
-### `l10n-rules.yaml`
-
-Controls how strings are translated (Localization).
-
-```yaml
-translation_settings:
-  source_lang: "en"
-  target_lang: ["ja", "zh-TW"]
-  provider: "gemini" # gemini, openai, ollama, or google
-
-provider_configs:
-  gemini:
-    model: "gemini-1.5-flash"
-    api_key: "YOUR_GEMINI_API_KEY"
-    # Prompts are optional. If omitted, a default prompt will be used.
-    prompts:
-      system: "You are an expert translator..."
-      contxt: "Translate the following from {source_lang} to {target_lang}: {text}"
-  openai:
-    model: "gpt-4o"
-    api_key: "YOUR_OPENAI_API_KEY"
-    base_url: "https://api.openai.com/v1"
-    # Prompts are optional.
-    prompts:
-      system: "You are a professional translator."
-      contxt: "Translate the following text from {source_lang} to {target_lang}: {text}"
-  ollama:
-    model: "llama3"
-    base_url: "http://localhost:11434"
-
-glossary:
-  # Terms that should not be translated
-  "GlocalText": "GlocalText"
-```
+-   `--config <path>` or `-c <path>`: Specifies the path to your `config.yaml` file. Defaults to `config.yaml` in the current directory.
+-   `--debug [LOG_DIR_PATH]`: Enables detailed debug logging. If an optional directory path is provided, the debug log will be saved to `glocaltext_debug.log` inside that directory. Otherwise, debug information is printed to the console.
 
 ## Contributors
 
@@ -208,7 +88,17 @@ glossary:
 
 ## License
 
-This repository is licensed under the [MIT License](https://opensource.org/license/MIT).
+### Primary Project License
+
+The main source code and documentation in this repository are licensed under the [MIT License](https://opensource.org/license/MIT).
+
+### Third-Party Components and Attributions
+
+This project utilizes external components or code whose copyright and licensing requirements must be separately adhered to:
+
+| Component Name                    | Source / Author | License Type | Location of License Document     | Hash Values                      |
+| :-------------------------------- | :-------------- | :----------- | :------------------------------- | -------------------------------- |
+| OG-Open-Source README.md Template | OG-Open-Source  | MIT          | /licenses/OG-Open-Source/LICENSE | 120aee1912f4c2c51937f4ea3c449954 |
 
 ---
 

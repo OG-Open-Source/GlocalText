@@ -1,16 +1,14 @@
 Metadata-Version: 2.4
 Name: GlocalText
-Version: 2.0.0
-Summary: A CLI tool for automated i18n and l10n of software projects.
+Version: 3.0.0
+Summary: A config-driven script to batch translate files using various providers.
 Author: OG-Open-Source
-Requires-Python: >=3.9
+Classifier: Programming Language :: Python :: 3
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.8
 License-File: LICENSE
-Requires-Dist: pydantic
-Requires-Dist: pyyaml
-Requires-Dist: xxhash
-Requires-Dist: google-re2
-Requires-Dist: google-genai
 Requires-Dist: deep-translator
-Requires-Dist: openai
-Requires-Dist: requests
+Requires-Dist: google-genai
+Requires-Dist: PyYAML
+Requires-Dist: regex
 Dynamic: license-file

@@ -1,8 +1,4 @@
-pydantic
-pyyaml
-xxhash
-google-re2
-google-genai
 deep-translator
-openai
-requests
+google-genai
+PyYAML
+regex
