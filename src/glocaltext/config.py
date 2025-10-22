@@ -1,7 +1,8 @@
-import yaml
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Union
+
+import yaml
 
 
 @dataclass
@@ -60,13 +61,9 @@ class Output:
 
         # Original validation logic
         if self.in_place and self.path is not None:
-            raise ValueError(
-                "The 'path' attribute cannot be used when 'in_place' is True."
-            )
+            raise ValueError("The 'path' attribute cannot be used when 'in_place' is True.")
         if not self.in_place and self.path is None:
-            raise ValueError(
-                "The 'path' attribute is required when 'in_place' is False."
-            )
+            raise ValueError("The 'path' attribute is required when 'in_place' is False.")
 
 
 @dataclass
@@ -79,13 +76,9 @@ class MatchRule:
     def __post_init__(self):
         """Validates that either 'exact' or 'contains' is provided, but not both."""
         if self.exact is None and self.contains is None:
-            raise ValueError(
-                "Either 'exact' or 'contains' must be provided for a match rule."
-            )
+            raise ValueError("Either 'exact' or 'contains' must be provided for a match rule.")
         if self.exact is not None and self.contains is not None:
-            raise ValueError(
-                "'exact' and 'contains' cannot be used simultaneously in a match rule."
-            )
+            raise ValueError("'exact' and 'contains' cannot be used simultaneously in a match rule.")
 
 
 @dataclass
@@ -96,9 +89,7 @@ class ActionRule:
     value: Optional[str] = None
 
     def __init__(self, **kwargs):
-        """
-        Initializes the ActionRule with backward compatibility for 'type'.
-        """
+        """Initializes the ActionRule with backward compatibility for 'type'."""
         # Provide backward compatibility for configs using 'type' instead of 'action'.
         if "type" in kwargs:
             kwargs["action"] = kwargs.pop("type")
@@ -110,15 +101,12 @@ class ActionRule:
     def __post_init__(self):
         """Validates that 'value' is provided for actions that require it."""
         if self.action in ["replace", "modify"] and self.value is None:
-            raise ValueError(
-                f"The 'value' must be provided for the '{self.action}' action."
-            )
+            raise ValueError(f"The 'value' must be provided for the '{self.action}' action.")
 
 
 @dataclass
 class Rule:
-    """
-    A single rule combining a match condition and an action.
+    """A single rule combining a match condition and an action.
     This class is designed to be constructed from a dictionary,
     so the from_dict method in GlocalConfig will handle the nested instantiation.
     """
@@ -170,7 +158,6 @@ class GlocalConfig:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "GlocalConfig":
         """Creates a GlocalConfig object from a dictionary, with validation."""
-
         providers_data = data.get("providers", {})
         providers = {
             p_name: ProviderSettings(
@@ -253,8 +240,7 @@ class GlocalConfig:
 
 
 def load_config(config_path: str) -> GlocalConfig:
-    """
-    Loads, parses, and validates the YAML configuration file.
+    """Loads, parses, and validates the YAML configuration file.
 
     Args:
         config_path: The path to the config.yaml file.
@@ -266,13 +252,14 @@ def load_config(config_path: str) -> GlocalConfig:
         FileNotFoundError: If the config file does not exist.
         yaml.YAMLError: If there is a syntax error in the YAML file.
         ValueError: If the configuration is invalid.
+
     """
     path = Path(config_path)
     if not path.is_file():
         raise FileNotFoundError(f"Configuration file not found at: {config_path}")
 
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
         if not isinstance(data, dict):

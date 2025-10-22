@@ -1,12 +1,11 @@
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-import uuid
 
 
 @dataclass
 class TextMatch:
-    """
-    Represents a piece of text extracted from a source file that is a candidate for translation.
+    """Represents a piece of text extracted from a source file that is a candidate for translation.
 
     Attributes:
         original_text: The exact text captured by the extraction rule.
@@ -17,6 +16,7 @@ class TextMatch:
         translated_text: The translated text. None if not yet translated.
         provider: The translation provider used (e.g., 'gemini', 'google', 'manual').
         tokens_used: The number of tokens consumed for the translation by an AI provider.
+
     """
 
     original_text: str
@@ -28,9 +28,7 @@ class TextMatch:
     tokens_used: int | None = None
     # A unique ID is generated for each match instance to distinguish it from others,
     # even if they have the same text and location (e.g., from different tasks).
-    match_id: str = field(
-        default_factory=lambda: str(uuid.uuid4()), init=False, repr=False
-    )
+    match_id: str = field(default_factory=lambda: str(uuid.uuid4()), init=False, repr=False)
 
     def __hash__(self):
         # Hash based on the unique identifier of the match instance.

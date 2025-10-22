@@ -48,6 +48,12 @@ This unified, firewall-inspired `rules` engine provides a clear and powerful way
 -   **Flexible Output Control**: Choose to either modify original files directly (`in_place: true`) or create new, translated versions in a specified path (`in_place: false`).
 -   **Incremental Translation**: Save time and cost by only translating new or modified content.
 
+## Installation
+
+```bash
+pip install GlocalText
+```
+
 ## Configuration (`config.yaml`)
 
 ### `output`

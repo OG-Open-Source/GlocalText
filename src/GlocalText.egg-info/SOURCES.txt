@@ -24,4 +24,3 @@ src/glocaltext/translators/__init__.py
 src/glocaltext/translators/base.py
 src/glocaltext/translators/gemini_translator.py
 src/glocaltext/translators/google_translator.py
-tests/test_workflow.py

@@ -1,6 +1,7 @@
 # Defines the base class for all translators
 from abc import ABC, abstractmethod
 from typing import Dict, List
+
 from ..models import TranslationResult
 
 
@@ -16,8 +17,7 @@ class BaseTranslator(ABC):
         debug: bool = False,
         prompts: Dict[str, str] | None = None,
     ) -> List[TranslationResult]:
-        """
-        Translates a list of texts.
+        """Translates a list of texts.
 
         Args:
             texts: A list of strings to be translated.
@@ -28,5 +28,6 @@ class BaseTranslator(ABC):
 
         Returns:
             A list of TranslationResult objects.
+
         """
         raise NotImplementedError
