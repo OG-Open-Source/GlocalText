@@ -11,8 +11,8 @@ providers:
   gemini:
     # API key will be read from here first.
     # If not provided, it will fall back to the GEMINI_API_KEY environment variable.
-    # api_key: your_gemini_api_key_here
-    model: "gemini-1.0-pro"
+    # api_key: GEMINI_API_KEY
+    model: "gemini-2.5-flash-lite"
 
 # ===================================================================
 # 2. Translation Tasks
