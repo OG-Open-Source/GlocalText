@@ -226,10 +226,19 @@ def capture_text_matches(task: TranslationTask, config: GlocalConfig) -> List[Te
 def _get_output_path(file_path: Path, task_output: Output) -> Path | None:
     """Determines the output path for a given file and task output settings."""
     if task_output.in_place:
+        # For in-place, suffix is applied to the original file name
+        if task_output.filename_suffix:
+            return file_path.with_name(f"{file_path.stem}{task_output.filename_suffix}{file_path.suffix}")
         return file_path
+
     if task_output.path:
         output_dir = Path(task_output.path)
+        # For specified output path, suffix is also applied
+        if task_output.filename_suffix:
+            new_name = f"{file_path.stem}{task_output.filename_suffix}{file_path.suffix}"
+            return output_dir / new_name
         return output_dir / file_path.name
+
     return None
 
 
