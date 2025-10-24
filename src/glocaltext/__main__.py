@@ -16,8 +16,8 @@ def main():
     parser.add_argument(
         "-c",
         "--config",
-        default="config.yaml",
-        help="Path to the configuration file (default: config.yaml)",
+        default="glocaltext_config.yaml",
+        help="Path to the configuration file (default: glocaltext_config.yaml)",
     )
     parser.add_argument(
         "--incremental",

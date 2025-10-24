@@ -37,10 +37,13 @@ tasks:
   # Incremental Translation (Optional)
   # -----------------------------------------------------------------
   # Enable this to translate only new or changed content, saving time
-  # and cost. A cache file (.glocaltext_cache.json) will be created
-  # in the output directory. Set to `true` to enable.
+  # and cost. A cache file (.glocaltext_cache.json) will be created.
+  # Set to `true` to enable.
   incremental: false
 
+  # (Optional) Override the default cache file location for this task.
+  # The path must be a directory. The cache file will be named .glocaltext_cache.json.
+  # cache_path: "/path/to/your/task_specific_cache_dir/"
   # -----------------------------------------------------------------
   # File Selection
   # -----------------------------------------------------------------
@@ -57,13 +60,17 @@ tasks:
   - "(?<=## ).+" # Translate all H2 headers
   - "(?<=### ).+" # Translate all H3 headers
   - "^[A-Za-z].*" # Translate paragraphs that start with a letter
-
   # -----------------------------------------------------------------
   # Output Configuration
   # -----------------------------------------------------------------
   output:
     in_place: false
     path: "docs/zh-TW/"
+    # New: Use a template for the output filename.
+    # Available placeholders: {stem}, {ext}, {source_lang}, {target_lang}
+    # If `filename` is provided, `filename_suffix` is ignored.
+    filename: "{stem}_{target_lang}{ext}"
+    # Legacy: Suffix to append to the original filename.
     # filename_suffix: "_zh-TW"
 
     # -----------------------------------------------------------------
@@ -100,3 +107,11 @@ tasks:
     action:
       action: "modify"
       value: "uptime -p | sed 's/up //'"
+
+  # Rule 5: Protect specific terms within a sentence from translation.
+  # The `protect` action ensures that certain words (e.g., brand names, variables)
+  # are not translated, while the rest of the sentence is.
+  - match:
+      contains: "GlocalText"
+    action:
+      action: "protect"

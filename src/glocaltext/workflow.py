@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import os
 from glob import glob
 from pathlib import Path
 from typing import Dict, Iterable, List
@@ -8,7 +9,7 @@ from typing import Dict, Iterable, List
 import regex
 from google.generativeai.generative_models import GenerativeModel
 
-from .config import BatchOptions, GlocalConfig, Output, TranslationTask
+from .config import BatchOptions, GlocalConfig, TranslationTask
 from .models import TextMatch
 from .translate import process_matches
 from .translators.base import BaseTranslator
@@ -25,22 +26,38 @@ def calculate_checksum(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def get_cache_path(task_output: Output) -> Path:
-    """Returns the correct path for the .glocaltext_cache.json file.
-    - If a path is specified, the cache is in that directory.
-    - If in_place, the cache is in the current working directory as a fallback.
-    """
-    if task_output.path:
-        output_dir = Path(task_output.path)
-        if output_dir.suffix or not output_dir.is_dir():
-            # If the path looks like a file, or doesn't exist as a directory,
-            # place the cache in its parent directory.
-            return output_dir.parent / CACHE_FILE_NAME
-        # If the path is an existing directory, place the cache inside it.
-        return output_dir / CACHE_FILE_NAME
-    else:
-        # Fallback for in-place translations.
-        return Path.cwd() / CACHE_FILE_NAME
+def _get_task_cache_path(files: List[Path], task: TranslationTask) -> Path:
+    """Determines the cache path with a new priority order."""
+    # 1. Use the task-specific `cache_path` if it exists.
+    if task.cache_path:
+        p = Path(task.cache_path)
+        if not p.is_dir():
+            raise NotADirectoryError(f"The specified cache_path '{p}' is not a directory.")
+        return p / CACHE_FILE_NAME
+
+    # 2. Check for a manual cache file in the current working directory.
+    manual_cache_path_cwd = Path.cwd() / CACHE_FILE_NAME
+    if manual_cache_path_cwd.exists():
+        logging.info(f"Found manual cache file at: {manual_cache_path_cwd}")
+        return manual_cache_path_cwd
+
+    # 3. If no files are provided, fall back to the current working directory.
+    if not files:
+        return manual_cache_path_cwd
+
+    # 4. Determine the common ancestor directory for all task files.
+    if len(files) == 1:
+        # If there's only one file, the cache is in its parent directory.
+        return files[0].parent / CACHE_FILE_NAME
+
+    common_path_str = os.path.commonpath([str(p) for p in files])
+    common_path = Path(common_path_str)
+
+    # If the common path points to a file, use its parent directory.
+    if common_path.is_file():
+        common_path = common_path.parent
+
+    return common_path / CACHE_FILE_NAME
 
 
 def load_cache(cache_path: Path, task_name: str) -> Dict[str, str]:
@@ -185,12 +202,11 @@ def _detect_newline(file_path: Path) -> str | None:
         return None
 
 
-def capture_text_matches(task: TranslationTask, config: GlocalConfig) -> List[TextMatch]:
+def capture_text_matches(task: TranslationTask, config: GlocalConfig, files_to_process: List[Path]) -> List[TextMatch]:
     """Phase 1: Capture
     Finds all text fragments to be translated based on the task's rules.
     """
     all_matches = []
-    files_to_process = list(_find_files(task))
     logging.info(f"Task '{task.name}': Found {len(files_to_process)} files to process.")
 
     for file_path in files_to_process:
@@ -223,23 +239,38 @@ def capture_text_matches(task: TranslationTask, config: GlocalConfig) -> List[Te
     return all_matches
 
 
-def _get_output_path(file_path: Path, task_output: Output) -> Path | None:
+def _get_output_path(file_path: Path, task: TranslationTask) -> Path | None:
     """Determines the output path for a given file and task output settings."""
+    task_output = task.output
+
     if task_output.in_place:
-        # For in-place, suffix is applied to the original file name
+        # For in-place, suffix is applied to the original file name.
         if task_output.filename_suffix:
             return file_path.with_name(f"{file_path.stem}{task_output.filename_suffix}{file_path.suffix}")
         return file_path
 
-    if task_output.path:
-        output_dir = Path(task_output.path)
-        # For specified output path, suffix is also applied
-        if task_output.filename_suffix:
-            new_name = f"{file_path.stem}{task_output.filename_suffix}{file_path.suffix}"
-            return output_dir / new_name
-        return output_dir / file_path.name
+    if not task_output.path:
+        return None
 
-    return None
+    output_dir = Path(task_output.path)
+
+    # New 'filename' template logic
+    if task_output.filename:
+        new_name = task_output.filename.format(
+            stem=file_path.stem,
+            ext=file_path.suffix,
+            source_lang=task.source_lang,
+            target_lang=task.target_lang,
+        )
+        return output_dir / new_name
+
+    # Backward-compatible 'filename_suffix' logic
+    if task_output.filename_suffix:
+        new_name = f"{file_path.stem}{task_output.filename_suffix}{file_path.suffix}"
+        return output_dir / new_name
+
+    # Default behavior: use original file name in the output path
+    return output_dir / file_path.name
 
 
 def _write_modified_content(output_path: Path, content: str, newline: str | None):
@@ -257,7 +288,7 @@ def _write_modified_content(output_path: Path, content: str, newline: str | None
     logging.info(f"Successfully wrote modified content to {output_path}")
 
 
-def precise_write_back(matches: List[TextMatch], task_output: Output):
+def precise_write_back(matches: List[TextMatch], task: TranslationTask):
     """Phase 5: Write-back
     Writes translated text back to files with precision.
     """
@@ -284,7 +315,7 @@ def precise_write_back(matches: List[TextMatch], task_output: Output):
                 translated_text = match.translated_text or match.original_text
                 content = content[:start] + translated_text + content[end:]
 
-            output_path = _get_output_path(file_path, task_output)
+            output_path = _get_output_path(file_path, task)
             if output_path:
                 _write_modified_content(output_path, content, newline=original_newline)
             else:
@@ -301,7 +332,8 @@ def run_task(task: TranslationTask, translators: Dict[str, BaseTranslator], conf
     Supports both full and incremental translation modes.
     """
     # Phase 1: Capture all text matches from source files.
-    all_matches = capture_text_matches(task, config)
+    files_to_process = list(_find_files(task))
+    all_matches = capture_text_matches(task, config, files_to_process)
 
     if not task.incremental:
         # Full translation mode
@@ -310,7 +342,11 @@ def run_task(task: TranslationTask, translators: Dict[str, BaseTranslator], conf
     else:
         # Incremental translation mode
         logging.info(f"Running task '{task.name}' in incremental mode.")
-        cache_path = get_cache_path(task.output)
+
+        # Determine cache path based on the files being processed
+        cache_path = _get_task_cache_path(files_to_process, task)
+        logging.info(f"Using cache path: {cache_path}")
+
         cache = load_cache(cache_path, task.name)
         logging.info(f"Loaded {len(cache)} items from cache for task '{task.name}'.")
 
@@ -337,6 +373,6 @@ def run_task(task: TranslationTask, translators: Dict[str, BaseTranslator], conf
 
     # Phase 3: Write the translated content back to the files.
     if task.output:
-        precise_write_back(all_matches, task.output)
+        precise_write_back(all_matches, task)
 
     return all_matches

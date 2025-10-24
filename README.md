@@ -9,7 +9,7 @@ GlocalText is a powerful command-line tool that automates text translation using
 -   [Introduction](#introduction)
 -   [Key Features](#key-features)
 -   [Installation](#installation)
--   [Configuration (`config.yaml`)](#configuration-configyaml)
+-   [Configuration (`glocaltext_config.yaml`)](#configuration-glocaltext_configyaml)
 -   [Usage](#usage)
 -   [Contributors](#contributors)
 -   [Contributing](#contributing)
@@ -21,9 +21,9 @@ GlocalText is a powerful command-line tool that automates text translation using
 
 GlocalText is a powerful command-line tool that automates text translation using a highly intuitive, **firewall-style `rules` system**. It processes text by evaluating a list of rules from top to bottom, giving you precise, predictable control over your localization workflow.
 
-At its core, the logic is simple: **for most actions, the first rule that matches wins**. When GlocalText extracts a piece of text, it checks your `rules` one by one. When it finds a matching rule for an action like `skip` or `replace`, it executes it and immediately stops processing for that text.
+At its core, the logic is simple: **for most actions, the first rule that matches wins**. When GlocalText extracts a piece of text, it checks your `rules` one by one. For terminating actions like `skip` or `replace`, it executes the first matching rule and immediately stops processing for that text.
 
-However, the `modify` action behaves differently. It allows for **chainable pre-processing**. A `modify` rule will alter the text and then pass the _modified_ text back into the rules engine, allowing subsequent rules (including other `modify` rules) to act on it before it is finally sent for translation. This enables powerful, step-by-step text manipulation.
+However, actions like `protect` and `modify` behave differently, allowing for **chainable pre-processing**. These rules will alter the text and then pass the _modified_ text back into the rules engine. This allows subsequent rules (including other `protect` or `modify` rules) to act on the text before it is finally sent for translation, enabling powerful, step-by-step text manipulation.
 
 This design offers several key advantages:
 
@@ -39,9 +39,10 @@ This unified, firewall-inspired `rules` engine provides a clear and powerful way
 -   **Top-Down Priority**: Rules are evaluated from top to bottom—the first rule that matches wins, providing predictable and precise control.
 -   **Flexible Matching**: Match text with `exact` (full string) or `contains` (substring). The condition can be a single string or a list for flexible `OR` logic.
 -   **Clear Actions**: Define clear actions:
-    -   `skip`: Protects brands, code, and variables from being translated.
-    -   `replace`: Provides an authoritative, final translation, skipping the API.
-    -   `modify`: Pre-processes text by replacing a matched segment before sending it for translation.
+    -   `skip`: A **terminating** action that protects the entire text block from being translated. Ideal for code blocks or content that should never be altered.
+    -   `replace`: A **terminating** action that provides an authoritative, final translation for a text block, skipping the API entirely.
+    -   `protect`: A **pre-processing** action that protects a specific segment (like a brand name or variable) _within_ a larger text block, allowing the rest of the text to be translated.
+    -   `modify`: A **pre-processing** action that replaces a matched segment before passing the modified text back to the rules engine for further processing or translation.
 -   **Multiple Provider Support**: Configure and use different translation providers like Google Translate and Google Gemini.
 -   **Task-Based Configuration**: Define multiple, independent translation tasks in a single configuration file.
 -   **Glob Pattern Matching**: Precisely include or exclude files for translation using `glob` patterns.
@@ -54,21 +55,38 @@ This unified, firewall-inspired `rules` engine provides a clear and powerful way
 pip install GlocalText
 ```
 
-## Configuration (`config.yaml`)
+## Configuration (`glocaltext_config.yaml`)
 
-### `output`
+This file is the control center for GlocalText. It consists of global settings and a list of `tasks`.
 
--   **`in_place`**: A boolean indicating whether to modify files directly (`true`) or write them to a separate directory (`false`). Defaults to `true`.
--   **`path`**: The output directory path. Required if `in_place` is `false`.
--   **`filename_suffix`**: A suffix to add to the output filenames (e.g., `_translated`).
--   **`incremental`**: A boolean (`true` or `false`) to enable or disable incremental translation for this task. When enabled, only new or modified text fragments are sent for translation, saving time and cost. Defaults to `false`.
+### Task Configuration
+
+Each item in the `tasks` list defines a self-contained translation job with the following settings:
+
+-   **`name`**: A unique name for the task.
+-   **`source_lang`** & **`target_lang`**: The source and target language codes (e.g., "en", "zh-TW").
+-   **`source`**: Defines which files to process.
+    -   **`include`**: A list of `glob` patterns for files to translate.
+    -   **`exclude`**: A list of `glob` patterns for files to skip.
+-   **`extraction_rules`**: A list of regex patterns to extract translatable text.
+-   **`incremental`**: A boolean (`true` or `false`) to enable or disable incremental translation. When enabled, only new or modified text is translated. Defaults to `false`.
+-   **`cache_path`**: (Optional) A path to a directory where the task's cache file (`.glocaltext_cache.json`) will be stored.
+-   **`output`**: Defines how translated files are written.
+    -   **`in_place`**: If `true`, modifies original files. If `false`, writes to a new directory.
+    -   **`path`**: The output directory. Required if `in_place` is `false`.
+    -   **`filename`**: (Optional) A string template to define the output filename.
+        -   Available placeholders: `{stem}`, `{ext}`, `{source_lang}`, `{target_lang}`.
+        -   Example: `filename: "{stem}_{target_lang}{ext}"` results in `mydoc_zh-TW.md`.
+        -   If `filename` is provided, `filename_suffix` is ignored.
+    -   **`filename_suffix`**: (Legacy) A suffix to add to the output filenames (e.g., `_translated`).
+-   **`rules`**: The firewall-style rules for text processing (see `skip`, `replace`, `protect`, `modify`).
 
 ### API Key Configuration
 
 API keys are configured under the `providers` section. GlocalText follows a clear priority for API key resolution:
 
 1.  **Environment Variable**: It will first check for a dedicated environment variable (e.g., `GEMINI_API_KEY`).
-2.  **Configuration File**: If the environment variable is not set, it will use the `api_key` specified in the `config.yaml` file.
+2.  **Configuration File**: If the environment variable is not set, it will use the `api_key` specified in the `glocaltext_config.yaml` file.
 
 This approach allows for flexibility in development (using the config file) and security in production (using environment variables).
 
@@ -76,7 +94,7 @@ This approach allows for flexibility in development (using the config file) and 
 
 ### Command-Line Options
 
--   `--config <path>` or `-c <path>`: Specifies the path to your `config.yaml` file. Defaults to `config.yaml` in the current directory.
+-   `--config <path>` or `-c <path>`: Specifies the path to your `glocaltext_config.yaml` file. Defaults to `glocaltext_config.yaml` in the current directory.
 -   `--debug [LOG_DIR_PATH]`: Enables detailed debug logging. If an optional directory path is provided, the debug log will be saved to `glocaltext_debug.log` inside that directory. Otherwise, debug information is printed to the console.
 
 ## Contributors

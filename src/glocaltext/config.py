@@ -47,6 +47,7 @@ class Output:
     in_place: bool = True
     path: str | None = None
     filename_suffix: Optional[str] = None
+    filename: Optional[str] = None
     # The 'filename_prefix' is included for backward compatibility with older configs.
     # It will be handled and converted to 'filename_suffix' in __post_init__.
     filename_prefix: Optional[str] = None
@@ -85,7 +86,7 @@ class MatchRule:
 class ActionRule:
     """Defines the action to be taken when a rule matches."""
 
-    action: Literal["skip", "replace", "modify"]
+    action: Literal["skip", "replace", "modify", "protect"]
     value: Optional[str] = None
 
     def __init__(self, **kwargs):
@@ -144,6 +145,7 @@ class TranslationTask:
     rules: List[Rule] = field(default_factory=list)
     regex_rewrites: Dict[str, str] = field(default_factory=dict)
     incremental: bool = False
+    cache_path: Optional[str] = None
 
 
 @dataclass
@@ -225,6 +227,7 @@ class GlocalConfig:
                     rules=rules,
                     regex_rewrites=t.get("regex_rewrites", {}),
                     incremental=t.get("incremental", False),
+                    cache_path=t.get("cache_path"),
                 )
             )
 

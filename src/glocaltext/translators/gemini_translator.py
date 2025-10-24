@@ -100,7 +100,11 @@ class GeminiTranslator(BaseTranslator):
                 response_mime_type="application/json",
                 system_instruction=system_instruction,
             )
-            response = self.client.models.generate_content(model=self.model_name, contents=prompt, config=config)
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=config,
+            )
             duration = time.time() - start_time
 
             # 4. Calculate response tokens and log
