@@ -96,14 +96,15 @@ class GeminiTranslator(BaseTranslator):
 
             # 3. Call the Gemini API
             start_time = time.time()
-            config = types.GenerateContentConfig(
-                response_mime_type="application/json",
-                system_instruction=system_instruction,
-            )
+
+            # Correctly create the generation config and contents
+            config = types.GenerationConfig(response_mime_type="application/json")
+
             response = self.client.models.generate_content(
                 model=self.model_name,
-                contents=prompt,
-                config=config,
+                contents=[prompt],
+                generation_config=config,  # type: ignore
+                system_instruction=system_instruction,  # type: ignore
             )
             duration = time.time() - start_time
 
@@ -155,7 +156,8 @@ class GeminiTranslator(BaseTranslator):
         if not content:
             return 0
         try:
-            response = self.client.models.count_tokens(model=self.model_name, contents=content)
+            # The 'contents' parameter expects an iterable, so we wrap 'content' in a list.
+            response = self.client.models.count_tokens(model=self.model_name, contents=[content])
             return response.total_tokens or 0
         except Exception as e:
             logging.warning(f"Token counting failed: {e}. Returning 0.")

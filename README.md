@@ -37,12 +37,12 @@ This unified, firewall-inspired `rules` engine provides a clear and powerful way
 
 -   **Unified Firewall `rules` Engine**: A single, powerful system to control your entire translation workflow.
 -   **Top-Down Priority**: Rules are evaluated from top to bottom—the first rule that matches wins, providing predictable and precise control.
--   **Flexible Matching**: Match text with `exact` (full string) or `contains` (substring). The condition can be a single string or a list for flexible `OR` logic.
+-   **Flexible Matching**: Match text with `exact` (full string), `contains` (substring), or `regex` (regular expression). The condition can be a single string or a list for flexible `OR` logic.
 -   **Clear Actions**: Define clear actions:
     -   `skip`: A **terminating** action that protects the entire text block from being translated. Ideal for code blocks or content that should never be altered.
     -   `replace`: A **terminating** action that provides an authoritative, final translation for a text block, skipping the API entirely.
     -   `protect`: A **pre-processing** action that protects a specific segment (like a brand name or variable) _within_ a larger text block, allowing the rest of the text to be translated.
-    -   `modify`: A **pre-processing** action that replaces a matched segment before passing the modified text back to the rules engine for further processing or translation.
+    -   `modify`: A **pre-processing** action that replaces a matched segment before passing the modified text back to the rules engine for further processing or translation. It supports regex capture groups for complex substitutions.
 -   **Multiple Provider Support**: Configure and use different translation providers like Google Translate and Google Gemini.
 -   **Task-Based Configuration**: Define multiple, independent translation tasks in a single configuration file.
 -   **Glob Pattern Matching**: Precisely include or exclude files for translation using `glob` patterns.
@@ -80,6 +80,22 @@ Each item in the `tasks` list defines a self-contained translation job with the 
         -   If `filename` is provided, `filename_suffix` is ignored.
     -   **`filename_suffix`**: (Legacy) A suffix to add to the output filenames (e.g., `_translated`).
 -   **`rules`**: The firewall-style rules for text processing (see `skip`, `replace`, `protect`, `modify`).
+
+### Specifying a Translator per Task
+
+You can specify a particular translation provider for an individual task using the `translator` option. This allows you to mix and match providers (e.g., use 'gemini' for one task and 'google' for another).
+
+If the specified translator is not available (e.g., missing API key), the system will log a warning and fall back to the default provider.
+
+```yaml
+tasks:
+    - name: "Documentation"
+      translator: "gemini"
+      # ... other task settings
+    - name: "Code Comments"
+      translator: "google"
+      # ... other task settings
+```
 
 ### API Key Configuration
 

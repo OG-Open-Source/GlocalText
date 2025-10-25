@@ -41,6 +41,14 @@ class ProviderSettings:
 
 
 @dataclass
+class Providers:
+    """Container for provider-specific settings."""
+
+    gemini: Optional[ProviderSettings] = None
+    mock: Optional[ProviderSettings] = None
+
+
+@dataclass
 class Output:
     """Defines the output behavior for a translation task."""
 
@@ -73,13 +81,17 @@ class MatchRule:
 
     exact: Optional[Union[str, List[str]]] = None
     contains: Optional[Union[str, List[str]]] = None
+    regex: Optional[Union[str, List[str]]] = None
 
     def __post_init__(self):
-        """Validates that either 'exact' or 'contains' is provided, but not both."""
-        if self.exact is None and self.contains is None:
-            raise ValueError("Either 'exact' or 'contains' must be provided for a match rule.")
-        if self.exact is not None and self.contains is not None:
-            raise ValueError("'exact' and 'contains' cannot be used simultaneously in a match rule.")
+        """Validates that exactly one of 'exact', 'contains', or 'regex' is provided."""
+        provided_rules = [self.exact, self.contains, self.regex]
+        num_provided = sum(1 for rule in provided_rules if rule is not None)
+
+        if num_provided == 0:
+            raise ValueError("One of 'exact', 'contains', or 'regex' must be provided for a match rule.")
+        if num_provided > 1:
+            raise ValueError("'exact', 'contains', and 'regex' cannot be used simultaneously in a match rule.")
 
 
 @dataclass
@@ -152,27 +164,14 @@ class TranslationTask:
 class GlocalConfig:
     """The root configuration for GlocalText."""
 
-    providers: Dict[str, ProviderSettings] = field(default_factory=dict)
+    providers: Providers = field(default_factory=Providers)
     tasks: List[TranslationTask] = field(default_factory=list)
     debug_options: DebugOptions = field(default_factory=DebugOptions)
     report_options: ReportOptions = field(default_factory=ReportOptions)
 
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "GlocalConfig":
-        """Creates a GlocalConfig object from a dictionary, with validation."""
-        providers_data = data.get("providers", {})
-        providers = {
-            p_name: ProviderSettings(
-                api_key=p_config.get("api_key"),
-                model=p_config.get("model"),
-                batch_options=BatchOptions(**p_config.get("batch_options", {})),
-            )
-            for p_name, p_config in providers_data.items()
-        }
-
-        tasks_data = data.get("tasks", [])
-        global_skip_translations = data.get("skip_translations", [])
-
+    @staticmethod
+    def _build_tasks_from_list(tasks_data: List[Dict[str, Any]], global_skip_translations: List[str]) -> List[TranslationTask]:
+        """Builds a list of TranslationTask objects from a list of dictionaries."""
         tasks = []
         for t in tasks_data:
             rules = [Rule(**r) for r in t.get("rules", [])]
@@ -230,6 +229,36 @@ class GlocalConfig:
                     cache_path=t.get("cache_path"),
                 )
             )
+        return tasks
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "GlocalConfig":
+        """Creates a GlocalConfig object from a dictionary, with validation."""
+        providers_data = data.get("providers", {}) or {}
+
+        def _parse_provider_settings(name: str) -> Optional[ProviderSettings]:
+            if name not in providers_data:
+                return None
+
+            p_config = providers_data[name]
+            if not isinstance(p_config, dict):
+                # Handles case like `mock:` which parses to `None`
+                p_config = {}
+
+            return ProviderSettings(
+                api_key=p_config.get("api_key"),
+                model=p_config.get("model"),
+                batch_options=BatchOptions(**p_config.get("batch_options", {})),
+            )
+
+        providers = Providers(
+            gemini=_parse_provider_settings("gemini"),
+            mock=_parse_provider_settings("mock"),
+        )
+
+        tasks_data = data.get("tasks", [])
+        global_skip_translations = data.get("skip_translations", [])
+        tasks = cls._build_tasks_from_list(tasks_data, global_skip_translations)
 
         debug_options = DebugOptions(**data.get("debug_options", {}))
         report_options = ReportOptions(**data.get("report_options", {}))

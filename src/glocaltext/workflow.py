@@ -11,7 +11,7 @@ from google.generativeai.generative_models import GenerativeModel
 
 from .config import BatchOptions, GlocalConfig, TranslationTask
 from .models import TextMatch
-from .translate import process_matches
+from .translate import apply_terminating_rules, process_matches
 from .translators.base import BaseTranslator
 
 # Define constants
@@ -28,32 +28,24 @@ def calculate_checksum(text: str) -> str:
 
 def _get_task_cache_path(files: List[Path], task: TranslationTask) -> Path:
     """Determines the cache path with a new priority order."""
-    # 1. Use the task-specific `cache_path` if it exists.
     if task.cache_path:
         p = Path(task.cache_path)
-        if not p.is_dir():
-            raise NotADirectoryError(f"The specified cache_path '{p}' is not a directory.")
         return p / CACHE_FILE_NAME
 
-    # 2. Check for a manual cache file in the current working directory.
     manual_cache_path_cwd = Path.cwd() / CACHE_FILE_NAME
     if manual_cache_path_cwd.exists():
         logging.info(f"Found manual cache file at: {manual_cache_path_cwd}")
         return manual_cache_path_cwd
 
-    # 3. If no files are provided, fall back to the current working directory.
     if not files:
         return manual_cache_path_cwd
 
-    # 4. Determine the common ancestor directory for all task files.
     if len(files) == 1:
-        # If there's only one file, the cache is in its parent directory.
         return files[0].parent / CACHE_FILE_NAME
 
     common_path_str = os.path.commonpath([str(p) for p in files])
     common_path = Path(common_path_str)
 
-    # If the common path points to a file, use its parent directory.
     if common_path.is_file():
         common_path = common_path.parent
 
@@ -73,92 +65,68 @@ def load_cache(cache_path: Path, task_name: str) -> Dict[str, str]:
         return {}
 
 
-def update_cache(cache_path: Path, task_name: str, all_matches: List[TextMatch]):
-    """Updates the cache file with the latest translations for a specific task."""
+def update_cache(cache_path: Path, task_name: str, matches_to_cache: List[TextMatch]):
+    """Updates the cache file by merging new translations into the existing task cache."""
     try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
         full_cache: Dict[str, Dict[str, str]] = {}
         if cache_path.exists():
             with open(cache_path, encoding="utf-8") as f:
                 try:
-                    full_cache = json.load(f)
+                    content = f.read()
+                    if content.strip():
+                        full_cache = json.loads(content)
                 except json.JSONDecodeError:
                     logging.warning(f"Cache file {cache_path} is corrupted. A new one will be created.")
 
-        # Create or update the cache for the current task
-        task_cache = {calculate_checksum(match.original_text): match.translated_text for match in all_matches if match.translated_text is not None}
-        full_cache[task_name] = task_cache
+        task_cache = full_cache.get(task_name, {})
+        new_entries = {calculate_checksum(match.original_text): match.translated_text for match in matches_to_cache if match.translated_text is not None}
 
-        # Write the updated cache back to the file
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(cache_path, "w", encoding="utf-8") as f:
-            json.dump(full_cache, f, ensure_ascii=False, indent=4)
-
+        if new_entries:
+            task_cache.update(new_entries)
+            full_cache[task_name] = task_cache
+            with open(cache_path, "w", encoding="utf-8") as f:
+                json.dump(full_cache, f, ensure_ascii=False, indent=4)
     except OSError as e:
         logging.error(f"Could not write to cache file at {cache_path}: {e}")
 
 
 def create_token_based_batches(matches: List[TextMatch], model: GenerativeModel, batch_options: BatchOptions) -> List[List[TextMatch]]:
-    """Creates batches of text matches based on token count to not exceed the provider's limit.
-
-    Args:
-        matches: A list of all text matches to be translated.
-        model: The generative model instance used for counting tokens.
-        batch_options: The batching configuration.
-
-    Returns:
-        A list of batches, where each batch is a list of TextMatch objects.
-
-    """
     if not batch_options.enabled:
         return [matches] if matches else []
-
     batches: List[List[TextMatch]] = []
     current_batch: List[TextMatch] = []
     current_batch_tokens = 0
-
     for match in matches:
-        # Estimate tokens for the current match
         match_tokens = model.count_tokens(match.original_text).total_tokens
-
-        # Check if adding the match exceeds the token limit or batch size
         if current_batch and ((current_batch_tokens + match_tokens > batch_options.max_tokens_per_batch) or (len(current_batch) >= batch_options.batch_size)):
             batches.append(current_batch)
             current_batch = []
             current_batch_tokens = 0
-
         current_batch.append(match)
         current_batch_tokens += match_tokens
-
-    # Add the last batch if it's not empty
     if current_batch:
         batches.append(current_batch)
-
     logging.info(f"Created {len(batches)} batches based on token limits.")
     return batches
 
 
 def _find_files(task: TranslationTask) -> Iterable[Path]:
-    """Finds all files for a task, respecting includes and excludes."""
     base_path = Path.cwd()
-
     included_files = set()
     for pattern in task.source.include:
         for file_path in glob(str(base_path / pattern), recursive=True):
             included_files.add(Path(file_path))
-
     excluded_files = set()
     for pattern in task.exclude:
         for file_path in glob(str(base_path / pattern), recursive=True):
             excluded_files.add(Path(file_path))
-
     return sorted(included_files - excluded_files)
 
 
 def _apply_regex_rewrites(content: str, task: TranslationTask) -> str:
-    """Applies regex rewrites to the content before text extraction."""
     if not task.regex_rewrites:
         return content
-
     for pattern, replacement in task.regex_rewrites.items():
         try:
             content = regex.sub(pattern, replacement, content)
@@ -168,7 +136,6 @@ def _apply_regex_rewrites(content: str, task: TranslationTask) -> str:
 
 
 def _extract_matches_from_content(content: str, file_path: Path, task: TranslationTask) -> List[TextMatch]:
-    """Extracts text matches from a single file's content based on extraction rules."""
     matches = []
     for rule_pattern in task.extraction_rules:
         try:
@@ -188,27 +155,19 @@ def _extract_matches_from_content(content: str, file_path: Path, task: Translati
 
 
 def _detect_newline(file_path: Path) -> str | None:
-    """Detects the newline character of a file."""
     try:
         with open(file_path, encoding="utf-8", newline="") as f:
             f.readline()
-            # isinstance check is robust for empty files where newlines is None
             if isinstance(f.newlines, tuple):
-                # Handle mixed newlines if necessary, for now, take the first
                 return f.newlines[0]
             return f.newlines
     except (OSError, IndexError):
-        # Fallback if file is empty or unreadable
         return None
 
 
 def capture_text_matches(task: TranslationTask, config: GlocalConfig, files_to_process: List[Path]) -> List[TextMatch]:
-    """Phase 1: Capture
-    Finds all text fragments to be translated based on the task's rules.
-    """
     all_matches = []
     logging.info(f"Task '{task.name}': Found {len(files_to_process)} files to process.")
-
     for file_path in files_to_process:
         try:
             content = file_path.read_text("utf-8")
@@ -219,12 +178,9 @@ def capture_text_matches(task: TranslationTask, config: GlocalConfig, files_to_p
             logging.error(f"Could not read file {file_path}: {e}")
         except Exception as e:
             logging.error(f"An unexpected error occurred while processing {file_path}: {e}")
-
     logging.info(f"Task '{task.name}': Captured {len(all_matches)} total text matches.")
-
     if config.debug_options.enabled:
         debug_messages = [f"[DEBUG] Captured: '{match.original_text}' from file {match.source_file} at span {match.span}" for match in all_matches]
-
         if config.debug_options.log_path:
             log_dir = Path(config.debug_options.log_path)
             log_dir.mkdir(parents=True, exist_ok=True)
@@ -235,26 +191,18 @@ def capture_text_matches(task: TranslationTask, config: GlocalConfig, files_to_p
         else:
             for msg in debug_messages:
                 logging.info(msg)
-
     return all_matches
 
 
 def _get_output_path(file_path: Path, task: TranslationTask) -> Path | None:
-    """Determines the output path for a given file and task output settings."""
     task_output = task.output
-
     if task_output.in_place:
-        # For in-place, suffix is applied to the original file name.
         if task_output.filename_suffix:
             return file_path.with_name(f"{file_path.stem}{task_output.filename_suffix}{file_path.suffix}")
         return file_path
-
     if not task_output.path:
         return None
-
     output_dir = Path(task_output.path)
-
-    # New 'filename' template logic
     if task_output.filename:
         new_name = task_output.filename.format(
             stem=file_path.stem,
@@ -263,64 +211,45 @@ def _get_output_path(file_path: Path, task: TranslationTask) -> Path | None:
             target_lang=task.target_lang,
         )
         return output_dir / new_name
-
-    # Backward-compatible 'filename_suffix' logic
     if task_output.filename_suffix:
         new_name = f"{file_path.stem}{task_output.filename_suffix}{file_path.suffix}"
         return output_dir / new_name
-
-    # Default behavior: use original file name in the output path
     return output_dir / file_path.name
 
 
 def _write_modified_content(output_path: Path, content: str, newline: str | None):
-    """Writes the modified content to the specified output path.
-    This function is robust against cases where the parent directory path might
-    exist as a file, a situation that can occur from previous failed runs.
-    """
-    # If the target parent directory exists as a file, remove it before creating the directory.
     if output_path.parent.is_file():
         logging.warning(f"Output directory path {output_path.parent} exists as a file. Deleting it to create directory.")
         output_path.parent.unlink()
-
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(content, "utf-8", newline=newline)
     logging.info(f"Successfully wrote modified content to {output_path}")
 
 
 def precise_write_back(matches: List[TextMatch], task: TranslationTask):
-    """Phase 5: Write-back
-    Writes translated text back to files with precision.
-    """
     if not matches:
         logging.info("No matches with translated text to write back.")
         return
-
     matches_by_file: Dict[Path, List[TextMatch]] = {}
     for match in matches:
         if match.translated_text is not None:
             matches_by_file.setdefault(match.source_file, []).append(match)
-
     logging.info(f"Writing back translations for {len(matches_by_file)} files.")
-
     for file_path, file_matches in matches_by_file.items():
         try:
             file_matches.sort(key=lambda m: m.span[0], reverse=True)
             logging.info(f"Processing {file_path}: {len(file_matches)} translations to apply.")
             original_newline = _detect_newline(file_path)
             content = file_path.read_text("utf-8")
-
             for match in file_matches:
                 start, end = match.span
                 translated_text = match.translated_text or match.original_text
                 content = content[:start] + translated_text + content[end:]
-
             output_path = _get_output_path(file_path, task)
             if output_path:
                 _write_modified_content(output_path, content, newline=original_newline)
             else:
                 logging.warning(f"Output path is not defined for a non-in-place task. Skipping write-back for {file_path}.")
-
         except OSError as e:
             logging.error(f"Could not read or write file {file_path}: {e}")
         except Exception as e:
@@ -328,51 +257,59 @@ def precise_write_back(matches: List[TextMatch], task: TranslationTask):
 
 
 def run_task(task: TranslationTask, translators: Dict[str, BaseTranslator], config: GlocalConfig) -> List[TextMatch]:
-    """Runs a single translation task from start to finish.
-    Supports both full and incremental translation modes.
     """
-    # Phase 1: Capture all text matches from source files.
+    Runs a single translation task with a robust, cache-aware workflow.
+    """
+    # Phase 1: Capture
     files_to_process = list(_find_files(task))
     all_matches = capture_text_matches(task, config, files_to_process)
 
-    if not task.incremental:
-        # Full translation mode
-        logging.info(f"Running task '{task.name}' in full translation mode.")
-        process_matches(all_matches, translators, task, config)
-    else:
-        # Incremental translation mode
-        logging.info(f"Running task '{task.name}' in incremental mode.")
+    # Phase 2: Apply Terminating Rules (e.g., skip, replace)
+    remaining_matches, terminated_matches = apply_terminating_rules(all_matches, task)
+    logging.info(f"Task '{task.name}': {len(terminated_matches)} matches handled by terminating rules.")
 
-        # Determine cache path based on the files being processed
+    # Phase 3: Check Cache for remaining matches
+    matches_to_translate: List[TextMatch] = []
+    cached_matches: List[TextMatch] = []
+    if task.incremental:
+        logging.info(f"Task '{task.name}': Running in incremental mode. Checking cache...")
         cache_path = _get_task_cache_path(files_to_process, task)
-        logging.info(f"Using cache path: {cache_path}")
-
         cache = load_cache(cache_path, task.name)
         logging.info(f"Loaded {len(cache)} items from cache for task '{task.name}'.")
-
-        matches_to_translate = []
-        cached_count = 0
-
-        for match in all_matches:
+        for match in remaining_matches:
             checksum = calculate_checksum(match.original_text)
             if checksum in cache:
                 match.translated_text = cache[checksum]
                 match.provider = "cached"
-                cached_count += 1
+                cached_matches.append(match)
             else:
                 matches_to_translate.append(match)
+        logging.info(f"Found {len(cached_matches)} cached translations.")
+        logging.info(f"{len(matches_to_translate)} texts require new translation.")
+    else:
+        logging.info(f"Task '{task.name}': Running in full translation mode (cache is ignored).")
+        matches_to_translate = remaining_matches
 
-        logging.info(f"Found {cached_count} translations in cache.")
-        logging.info(f"Found {len(matches_to_translate)} new or modified texts to translate.")
+    # Phase 4: Pre-process & Translate via API
+    if matches_to_translate:
+        logging.info(f"Processing {len(matches_to_translate)} matches for API translation.")
+        process_matches(matches_to_translate, translators, task, config)
 
-        if matches_to_translate:
-            process_matches(matches_to_translate, translators, task, config)
+    # Phase 5: Update Cache
+    if task.incremental:
+        # THE DEFINITIVE FIX:
+        # Filter the list that went to the API and only take items that were successfully translated by a provider.
+        # Exclude items that were handled by terminating rules (provider='rule' or 'skipped') or were found in the cache.
+        matches_to_actually_cache = [m for m in matches_to_translate if m.translated_text is not None and m.provider not in ("cached", "rule", "skipped")]
+        if matches_to_actually_cache:
+            cache_path = _get_task_cache_path(files_to_process, task)
+            logging.info(f"Updating cache with {len(matches_to_actually_cache)} new, API-translated items.")
+            update_cache(cache_path, task.name, matches_to_actually_cache)
 
-        # After processing, update the cache with all matches (including new ones)
-        update_cache(cache_path, task.name, all_matches)
-
-    # Phase 3: Write the translated content back to the files.
+    # Phase 6: Combine & Write Back
+    # The final set for write-back includes all categories, ensuring everything is written correctly.
+    final_matches = terminated_matches + cached_matches + matches_to_translate
     if task.output:
-        precise_write_back(all_matches, task)
+        precise_write_back(final_matches, task)
 
-    return all_matches
+    return final_matches

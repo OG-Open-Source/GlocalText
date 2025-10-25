@@ -115,3 +115,20 @@ tasks:
       contains: "GlocalText"
     action:
       action: "protect"
+
+  # Rule 6: Use regex for complex, multi-line matching and replacement.
+  # This rule finds a multi-line code block and replaces its content
+  # while preserving the surrounding markers.
+  - match:
+      # (?s) is a flag that makes '.' match newlines.
+      regex: '(?s)```python\n(.*?)\n```'
+    action:
+      action: "replace"
+      # The value can be a multi-line string.
+      # \1 is a backreference to the first capture group (.*?) in the regex.
+      value: |
+        ```python
+        # The original content was replaced by this rule.
+        # Original content: \1
+        print("Hello, GlocalText!")
+        ```
