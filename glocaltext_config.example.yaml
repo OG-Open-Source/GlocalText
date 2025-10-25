@@ -42,8 +42,9 @@ tasks:
   incremental: false
 
   # (Optional) Override the default cache file location for this task.
-  # The path must be a directory. The cache file will be named .glocaltext_cache.json.
-  # cache_path: "/path/to/your/task_specific_cache_dir/"
+  # The path must be a directory where the .glocaltext_cache.json file will be stored.
+  # For example, to use a shared cache across multiple tasks:
+  cache_path: "path/to/your/cache_dir"
   # -----------------------------------------------------------------
   # File Selection
   # -----------------------------------------------------------------
@@ -70,6 +71,9 @@ tasks:
     # Available placeholders: {stem}, {ext}, {source_lang}, {target_lang}
     # If `filename` is provided, `filename_suffix` is ignored.
     filename: "{stem}_{target_lang}{ext}"
+
+    # Alternatively, you can provide a fixed filename.
+    # filename: "my-custom-output-file.md"
     # Legacy: Suffix to append to the original filename.
     # filename_suffix: "_zh-TW"
 

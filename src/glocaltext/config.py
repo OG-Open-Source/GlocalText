@@ -170,45 +170,75 @@ class GlocalConfig:
     report_options: ReportOptions = field(default_factory=ReportOptions)
 
     @staticmethod
+    def _apply_backward_compatibility_rules(task_data: Dict[str, Any], global_skip_translations: List[str]) -> List[Rule]:
+        """
+        Builds a list of rules from various legacy configuration fields.
+
+        This is to ensure backward compatibility with older configuration formats that defined
+        rules like glossaries, keyword replacements, and skip lists outside the main 'rules' list.
+        """
+        rules = [Rule(**r) for r in task_data.get("rules", [])]
+
+        # Backward compatibility for 'manual_translations' (now a 'replace' rule)
+        manual_translations = task_data.get("manual_translations", task_data.get("glossary", {}))
+        for source, target in manual_translations.items():
+            rules.append(
+                Rule(
+                    match={"exact": source},
+                    action={"action": "replace", "value": target},
+                )
+            )
+
+        # Backward compatibility for 'keyword_replacements' (now a 'modify' rule)
+        keyword_replacements = task_data.get("keyword_replacements", {})
+        for keyword, replacement in keyword_replacements.items():
+            rules.append(
+                Rule(
+                    match={"contains": keyword},
+                    action={"action": "modify", "value": replacement},
+                )
+            )
+
+        # Combine global and task-level skip lists for backward compatibility
+        task_skip = task_data.get("skip_translations", [])
+        all_skips = set(global_skip_translations) | set(task_skip)
+        for text in all_skips:
+            rules.append(Rule(match={"exact": text}, action={"action": "skip"}))
+
+        return rules
+
+    @staticmethod
+    def _prepare_source_data(task_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Prepares the source configuration, handling backward compatibility for the 'targets' key.
+
+        In older versions, source files were defined under 'targets'. This function ensures
+        they are correctly moved to 'source.include' for the new data model.
+        """
+        source_data = task_data.get("source", {})
+        if "targets" in task_data:
+            # If 'targets' exists, merge it into the 'include' list.
+            # setdefault is used to avoid overwriting 'include' if it's already present in 'source'.
+            source_data.setdefault("include", task_data["targets"])
+        return source_data
+
+    @staticmethod
     def _build_tasks_from_list(tasks_data: List[Dict[str, Any]], global_skip_translations: List[str]) -> List[TranslationTask]:
-        """Builds a list of TranslationTask objects from a list of dictionaries."""
+        """
+        Builds a list of TranslationTask objects from a list of dictionaries.
+
+        This function orchestrates the parsing of each task definition, delegating
+        backward compatibility handling and data preparation to helper methods.
+        """
         tasks = []
         for t in tasks_data:
-            rules = [Rule(**r) for r in t.get("rules", [])]
+            # Consolidate all rule definitions, including backward-compatible ones.
+            # This keeps the task construction logic clean by handling legacy fields separately.
+            rules = GlocalConfig._apply_backward_compatibility_rules(t, global_skip_translations)
 
-            # Backward compatibility for 'manual_translations' (glossary)
-            manual_translations = t.get("manual_translations", t.get("glossary", {}))
-            for source, target in manual_translations.items():
-                rules.append(
-                    Rule(
-                        match={"exact": source},
-                        action={"action": "replace", "value": target},
-                    )
-                )
-
-            # Backward compatibility for 'keyword_replacements'
-            keyword_replacements = t.get("keyword_replacements", {})
-            for keyword, replacement in keyword_replacements.items():
-                rules.append(
-                    Rule(
-                        match={"contains": keyword},
-                        action={"action": "modify", "value": replacement},
-                    )
-                )
-
-            # Backward compatibility for global 'skip_translations'
-            for text in global_skip_translations:
-                rules.append(Rule(match={"exact": text}, action={"action": "skip"}))
-
-            # Backward compatibility for task-level 'skip_translations'
-            task_skip = t.get("skip_translations", [])
-            for text in task_skip:
-                rules.append(Rule(match={"exact": text}, action={"action": "skip"}))
-
-            # Handle 'source' and backward compatibility with 'targets'
-            source_data = t.get("source", {})
-            if "targets" in t:
-                source_data.setdefault("include", t["targets"])
+            # Prepare the source data, handling legacy 'targets' field.
+            # This isolates the logic for source file definition.
+            source_data = GlocalConfig._prepare_source_data(t)
 
             tasks.append(
                 TranslationTask(

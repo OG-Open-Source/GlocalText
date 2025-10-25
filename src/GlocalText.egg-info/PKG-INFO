@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: GlocalText
-Version: 3.1.0
+Version: 3.1.1
 Summary: A config-driven script to batch translate files using various providers.
 Author: OG-Open-Source
 Project-URL: Homepage, https://github.com/OG-Open-Source/GlocalText

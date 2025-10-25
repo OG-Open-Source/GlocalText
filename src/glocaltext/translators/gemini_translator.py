@@ -40,23 +40,27 @@ GEMINI_MODEL_CONFIGS = {"gemma-3n-e4b-it": {"rpm": 30, "tpm": 15000, "batch_size
 
 
 class GeminiTranslator(BaseTranslator):
-    """Translator using the official Google GenAI SDK."""
+    """
+    A translator that uses the official Google Generative AI (Gemini) SDK.
+
+    This class handles the entire translation workflow, including building
+    prompts, sending requests to the Gemini API, parsing the JSON response,
+
+    and handling errors and token counting.
+    """
 
     def __init__(self, api_key: Optional[str], model_name: str = "gemini-1.0-pro"):
-        """Initializes the Gemini Translator.
-
-        It follows a specific priority for API key resolution:
-        1. Use the api_key explicitly provided in the configuration.
-        2. If not provided, fall back to the `GEMINI_API_KEY` environment variable.
+        """
+        Initialize the Gemini Translator.
 
         Args:
-            api_key: The API key from the config file (can be None).
-            model_name: The name of the Gemini model to use.
+            api_key: The API key for the Gemini service. If not provided, it will
+                     fall back to the `GEMINI_API_KEY` environment variable.
+            model_name: The specific Gemini model to use for translations.
 
         Raises:
-            ValueError: If no API key is found in the config or environment variables.
-            ConnectionError: If the client fails to initialize.
-
+            ValueError: If no API key is found.
+            ConnectionError: If the Gemini client fails to initialize.
         """
         final_api_key = api_key or os.getenv("GEMINI_API_KEY")
 
@@ -77,38 +81,45 @@ class GeminiTranslator(BaseTranslator):
         debug: bool = False,
         prompts: Dict[str, str] | None = None,
     ) -> List[TranslationResult]:
-        """Translate a list of texts using the GenAI SDK's generative model.
-        This method orchestrates the translation process by building a prompt,
-        calling the API, and processing the response.
+        """
+        Translate a list of texts using the Gemini generative model.
+
+        This method builds a detailed prompt, sends it to the Gemini API,
+        and processes the response to return structured translation results.
+
+        Args:
+            texts: A list of texts to be translated.
+            target_language: The target language for the translation.
+            source_language: The source language of the texts.
+            debug: If True, enables detailed logging of the API request and response.
+            prompts: An optional dictionary of custom prompts ('system' and 'user').
+
+        Returns:
+            A list of TranslationResult objects, one for each input text.
+            In case of a major API failure, it returns the original texts.
         """
         if not texts:
             return []
 
         prompt = ""
         try:
-            # 1. Build the prompt and get system instructions
             prompt, system_instruction = self._build_prompt(texts, target_language, source_language, prompts)
 
-            # 2. Calculate prompt tokens and log if debugging
             prompt_tokens = self._count_tokens(prompt)
             if debug:
                 logging.info(f"[DEBUG] Gemini Request:\n- Model: {self.model_name}\n- Prompt Tokens: {prompt_tokens}\n- Prompt Body (first 200 chars): {prompt[:200]}...")
 
-            # 3. Call the Gemini API
             start_time = time.time()
 
-            # Correctly create the generation config and contents
-            config = types.GenerationConfig(response_mime_type="application/json")
+            config = types.GenerateContentConfig(response_mime_type="application/json", system_instruction=system_instruction)
 
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=[prompt],
-                generation_config=config,  # type: ignore
-                system_instruction=system_instruction,  # type: ignore
+                config=config,
             )
             duration = time.time() - start_time
 
-            # 4. Calculate response tokens and log
             response_text = response.text or ""
             response_tokens = self._count_tokens(response.candidates[0].content) if response.candidates and response.candidates[0].content else 0
             total_tokens = prompt_tokens + response_tokens
@@ -116,10 +127,7 @@ class GeminiTranslator(BaseTranslator):
             if debug:
                 logging.info(f"[DEBUG] Gemini Response:\n- Duration: {duration:.2f}s\n- Completion Tokens: {response_tokens}\n- Total Tokens: {total_tokens}\n- Response Text (first 200 chars): {response_text[:200]}...")
 
-            # 5. Parse and validate the structured response
             translated_texts = self._parse_and_validate_response(response_text, len(texts))
-
-            # 6. Package results into TranslationResult objects
             return self._package_results(translated_texts, total_tokens)
 
         except Exception as e:
@@ -135,8 +143,24 @@ class GeminiTranslator(BaseTranslator):
         source_language: Optional[str],
         prompts: Optional[Dict[str, str]],
     ) -> tuple[str, Optional[str]]:
-        """Builds the prompt and extracts the system instruction."""
-        manual_translations_json = "{}"  # Deprecated
+        """
+        Build the full prompt for the Gemini API and extract the system instruction.
+
+        It uses a template that is populated with the source and target languages,
+        manual translations (if any), and the texts to be translated, formatted as
+        a JSON array.
+
+        Args:
+            texts: The list of texts to translate.
+            target_language: The target language.
+            source_language: The source language.
+            prompts: Optional custom prompts to override the default.
+
+        Returns:
+            A tuple containing the user-facing prompt and the system instruction.
+        """
+        # [TODO]: Implement manual translations lookup
+        manual_translations_json = "{}"
         texts_json_array = json.dumps(texts, ensure_ascii=False)
 
         user_prompt_template = prompts.get("user", PROMPT_TEMPLATE) if prompts else PROMPT_TEMPLATE
@@ -156,7 +180,6 @@ class GeminiTranslator(BaseTranslator):
         if not content:
             return 0
         try:
-            # The 'contents' parameter expects an iterable, so we wrap 'content' in a list.
             response = self.client.models.count_tokens(model=self.model_name, contents=[content])
             return response.total_tokens or 0
         except Exception as e:

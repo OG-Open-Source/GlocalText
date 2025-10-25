@@ -13,31 +13,68 @@ from .translators.google_translator import GoogleTranslator
 from .translators.mock_translator import MockTranslator
 
 
-def initialize_translators(config: GlocalConfig) -> Dict[str, BaseTranslator]:
-    """Initializes all available translation providers based on the config."""
-    translators: Dict[str, BaseTranslator] = {}
+def _initialize_gemini(config: GlocalConfig, translators: Dict[str, BaseTranslator]) -> None:
+    """
+    Initialize the Gemini translation provider.
 
-    # Initialize Gemini if configured
-    if config.providers.gemini:
-        api_key = os.environ.get("GEMINI_API_KEY") or config.providers.gemini.api_key
-        if api_key:
-            try:
-                translators["gemini"] = GeminiTranslator(
-                    api_key=api_key,
-                    model_name=config.providers.gemini.model or "gemini-1.0-pro",
-                )
-                gemini_translator = translators["gemini"]
-                if isinstance(gemini_translator, GeminiTranslator):
-                    logging.info(f"Gemini provider initialized with default model '{gemini_translator.model_name}'.")
-            except Exception as e:
-                logging.error(f"Failed to initialize Gemini provider: {e}")
-        else:
-            logging.warning("Gemini provider is configured in glocaltext_config.yaml but no API key was found in the GEMINI_API_KEY environment variable or the config file. It will be unavailable.")
+    Checks for configuration and API keys (from environment variables or config file)
+    and adds an instance of GeminiTranslator to the translators dictionary if successful.
 
-    # Initialize Mock if configured
+    Args:
+        config: The application's configuration object.
+        translators: The dictionary of active translator instances.
+    """
+    if not config.providers.gemini:
+        return
+
+    api_key = os.environ.get("GEMINI_API_KEY") or config.providers.gemini.api_key
+    if api_key:
+        try:
+            translators["gemini"] = GeminiTranslator(
+                api_key=api_key,
+                model_name=config.providers.gemini.model or "gemini-1.0-pro",
+            )
+            gemini_translator = translators["gemini"]
+            if isinstance(gemini_translator, GeminiTranslator):
+                logging.info(f"Gemini provider initialized with default model '{gemini_translator.model_name}'.")
+        except Exception as e:
+            logging.error(f"Failed to initialize Gemini provider: {e}")
+    else:
+        logging.warning("Gemini provider is configured but no API key was found. It will be unavailable.")
+
+
+def _initialize_mock(config: GlocalConfig, translators: Dict[str, BaseTranslator]) -> None:
+    """
+    Initialize the Mock translation provider.
+
+    Used for testing and development to simulate translation without making real API calls.
+
+    Args:
+        config: The application's configuration object.
+        translators: The dictionary of active translator instances.
+    """
     if config.providers.mock is not None:
         translators["mock"] = MockTranslator()
         logging.info("Mock provider initialized.")
+
+
+def initialize_translators(config: GlocalConfig) -> Dict[str, BaseTranslator]:
+    """
+    Initialize all available translation providers based on the configuration.
+
+    It dynamically initializes providers like Gemini and Mock, and always
+    sets up a Google Translate provider as a reliable fallback.
+
+    Args:
+        config: The application's configuration object.
+
+    Returns:
+        A dictionary mapping provider names to their initialized translator instances.
+    """
+    translators: Dict[str, BaseTranslator] = {}
+
+    _initialize_gemini(config, translators)
+    _initialize_mock(config, translators)
 
     # Always initialize Google as a fallback
     if "google" not in translators:
@@ -48,7 +85,17 @@ def initialize_translators(config: GlocalConfig) -> Dict[str, BaseTranslator]:
 
 
 def _check_exact_match(text: str, rule: Rule) -> Tuple[bool, str | None]:
-    """Checks for an exact match."""
+    """
+    Check if the text exactly matches one of the conditions in the rule.
+
+    Args:
+        text: The text to check.
+        rule: The rule containing the match conditions.
+
+    Returns:
+        A tuple containing a boolean indicating if a match was found,
+        and the matched value if found.
+    """
     if not rule.match.exact:
         return False, None
     conditions = [rule.match.exact] if isinstance(rule.match.exact, str) else rule.match.exact
@@ -58,7 +105,17 @@ def _check_exact_match(text: str, rule: Rule) -> Tuple[bool, str | None]:
 
 
 def _check_contains_match(text: str, rule: Rule) -> Tuple[bool, str | None]:
-    """Checks for a contains match."""
+    """
+    Check if the text contains one of the substrings specified in the rule.
+
+    Args:
+        text: The text to check.
+        rule: The rule containing the match conditions.
+
+    Returns:
+        A tuple containing a boolean indicating if a match was found,
+        and the matched value if found.
+    """
     if not rule.match.contains:
         return False, None
     conditions = [rule.match.contains] if isinstance(rule.match.contains, str) else rule.match.contains
@@ -132,28 +189,25 @@ def _handle_modify_action(text: str, matched_value: str, rule: Rule) -> str:
     return modified_text
 
 
-def _apply_protection(text: str, matched_value: str, rule: Rule, protected_map: Dict[str, str]) -> str:
-    """Applies protection to the text based on the rule's matched value."""
-    if not rule.match.regex:
-        # Handles 'exact' and 'contains' matches.
-        # The 'matched_value' is the exact substring to protect.
-        if matched_value not in protected_map.values():
-            placeholder_key = f"__PROTECT_{len(protected_map)}__"
-            protected_map[placeholder_key] = matched_value
-            logging.debug(f"Protected text: '{matched_value}' replaced with '{placeholder_key}'")
-        # If it's already in the map, find the placeholder to use for replacement
-        placeholder = next((k for k, v in protected_map.items() if v == matched_value), None)
-        return text.replace(matched_value, placeholder) if placeholder else text
+def _apply_simple_protection(text: str, matched_value: str, protected_map: Dict[str, str]) -> str:
+    """Applies protection for 'exact' and 'contains' matches."""
+    if matched_value not in protected_map.values():
+        placeholder_key = f"__PROTECT_{len(protected_map)}__"
+        protected_map[placeholder_key] = matched_value
+        logging.debug(f"Protected text: '{matched_value}' replaced with '{placeholder_key}'")
 
-    # Handles 'regex' matches.
+    placeholder = next((k for k, v in protected_map.items() if v == matched_value), None)
+    return text.replace(matched_value, placeholder) if placeholder else text
+
+
+def _apply_regex_protection(text: str, matched_value: str, protected_map: Dict[str, str]) -> str:
+    """Applies protection for 'regex' matches."""
     try:
         new_text = ""
         last_end = 0
-        # 'matched_value' is the regex pattern string.
         for m in regex.finditer(matched_value, text, regex.DOTALL):
             original_substring = m.group(0)
 
-            # Find existing placeholder or create a new one.
             placeholder = next((k for k, v in protected_map.items() if v == original_substring), None)
             if not placeholder:
                 placeholder = f"__PROTECT_{len(protected_map)}__"
@@ -167,6 +221,14 @@ def _apply_protection(text: str, matched_value: str, rule: Rule, protected_map: 
     except regex.error as e:
         logging.warning(f"Error during regex protection for pattern '{matched_value}': {e}")
         return text
+
+
+def _apply_protection(text: str, matched_value: str, rule: Rule, protected_map: Dict[str, str]) -> str:
+    """Applies protection to the text based on the rule's matched value."""
+    if rule.match.regex:
+        return _apply_regex_protection(text, matched_value, protected_map)
+    else:
+        return _apply_simple_protection(text, matched_value, protected_map)
 
 
 def _handle_rule_action(

@@ -9,8 +9,16 @@ from .config import GlocalConfig
 from .models import TextMatch
 
 
-def _calculate_metrics(all_matches: List[TextMatch]):
-    """Calculates various metrics from the list of all text matches."""
+def _calculate_metrics(all_matches: List[TextMatch]) -> Dict:
+    """
+    Calculate various metrics from the list of all text matches.
+
+    Args:
+        all_matches: A list of TextMatch objects from all tasks.
+
+    Returns:
+        A dictionary containing key metrics about the translation process.
+    """
     total_matches = len(all_matches)
     unique_texts = {m.original_text for m in all_matches}
     processed_files = {m.source_file for m in all_matches}
@@ -36,7 +44,13 @@ def _calculate_metrics(all_matches: List[TextMatch]):
 
 
 def _log_summary_to_console(metrics: Dict, total_run_time: float):
-    """Logs the summary report to the console."""
+    """
+    Log the summary report to the console.
+
+    Args:
+        metrics: A dictionary of calculated metrics.
+        total_run_time: The total execution time of all tasks.
+    """
     logging.info("\n" + "=" * 40)
     logging.info(" GlocalText - Translation Summary")
     logging.info("=" * 40)
@@ -56,14 +70,34 @@ def _log_summary_to_console(metrics: Dict, total_run_time: float):
 
 
 def _get_report_filepath(start_time: float, end_time: float, export_dir: Path) -> Path:
-    """Generates a timestamped filepath for the CSV report."""
+    """
+    Generate a timestamped filepath for the CSV report.
+
+    The filename is created using the UTC start and end times of the process
+    to ensure uniqueness and chronological order.
+
+    Args:
+        start_time: The POSIX timestamp of the start time.
+        end_time: The POSIX timestamp of the end time.
+        export_dir: The directory where the report will be saved.
+
+    Returns:
+        A Path object representing the full filepath for the report.
+    """
     start_ts = datetime.fromtimestamp(start_time, tz=timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
     end_ts = datetime.fromtimestamp(end_time, tz=timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
     return export_dir / f"{start_ts}---{end_ts}.csv"
 
 
 def _export_summary_to_csv(all_matches: List[TextMatch], config: GlocalConfig, filepath: Path):
-    """Exports the detailed match data to a CSV file."""
+    """
+    Export the detailed match data to a CSV file.
+
+    Args:
+        all_matches: A list of all TextMatch objects.
+        config: The application's configuration object.
+        filepath: The path to the output CSV file.
+    """
     try:
         with open(filepath, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
@@ -104,7 +138,19 @@ def generate_summary_report(
     config: GlocalConfig,
     export_dir_override: Path | None = None,
 ):
-    """Generates and outputs a summary report."""
+    """
+    Generate and output a summary report to the console and optionally to a CSV file.
+
+    This is the main function for the reporting module. It orchestrates the
+    calculation of metrics, console logging, and CSV export.
+
+    Args:
+        all_matches: A list of all TextMatch objects from the translation tasks.
+        start_time: The POSIX timestamp when the process started.
+        config: The application's configuration object.
+        export_dir_override: An optional path to override the export directory
+            defined in the configuration.
+    """
     end_time = time.time()
     total_run_time = end_time - start_time
     metrics = _calculate_metrics(all_matches)
