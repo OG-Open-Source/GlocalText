@@ -2,3 +2,4 @@ deep-translator
 google-genai
 PyYAML
 regex
+tenacity~=8.2.3

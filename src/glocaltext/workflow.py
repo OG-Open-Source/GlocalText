@@ -4,9 +4,10 @@ import logging
 import os
 from glob import glob
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Tuple
 
 import regex
+import yaml
 from google.generativeai.generative_models import GenerativeModel
 
 from .config import BatchOptions, GlocalConfig, TranslationTask
@@ -232,41 +233,19 @@ def _is_overlapping(span1: Tuple[int, int], span2: Tuple[int, int]) -> bool:
 
 def _deduplicate_matches(matches: List[TextMatch]) -> List[TextMatch]:
     """
-    De-duplicates matches by resolving overlaps, prioritizing based on a predefined provider order and span.
+    De-duplicates a list of matches, keeping the first occurrence of each unique text.
 
-    Why: This function is critical for ensuring that when multiple extraction rules
-    capture overlapping text, only the most reliable or intended match is kept.
-    The provider-based priority ensures that explicit rules (`rule`) are preferred
-    over matches that were, for example, marked to be skipped (`skipped`).
+    Why: This function simplifies the list of matches to ensure that the same text
+    is not processed or translated multiple times. It prioritizes the first match
+    found in the original list.
     """
-    # Defines which provider's match to keep in case of an overlap. Lower number means higher priority.
-    provider_priority = {"rule": 0, "skipped": 1}
-
-    # Sort matches to process them in a deterministic order.
-    # Primary sort key is the provider's priority, secondary is the start of the span.
-    # This ensures that higher-priority matches are considered first.
-    sorted_matches = sorted(
-        matches,
-        key=lambda m: (provider_priority.get(m.provider or "", 99), m.span[0]),
-    )
-
-    final_matches: List[TextMatch] = []
-    processed_spans: List[Tuple[int, int]] = []
-
-    for match in sorted_matches:
-        # Check if the current match overlaps with any of the spans we've already decided to keep.
-        has_overlap = False
-        for processed_span in processed_spans:
-            if _is_overlapping(match.span, processed_span):
-                has_overlap = True
-                logging.debug(f"Discarding overlapping match for span {match.span} because it conflicts with already processed span {processed_span}.")
-                break
-        # If there's no overlap, this match is safe to keep.
-        if not has_overlap:
-            final_matches.append(match)
-            processed_spans.append(match.span)
-
-    return final_matches
+    seen_texts = set()
+    deduplicated_matches: List[TextMatch] = []
+    for match in matches:
+        if match.original_text not in seen_texts:
+            deduplicated_matches.append(match)
+            seen_texts.add(match.original_text)
+    return deduplicated_matches
 
 
 def _group_matches_by_file(matches: List[TextMatch]) -> Dict[Path, List[TextMatch]]:
@@ -294,13 +273,13 @@ def _group_matches_by_file(matches: List[TextMatch]) -> Dict[Path, List[TextMatc
 
 def _apply_translations_to_content(content: str, matches: List[TextMatch]) -> str:
     """
-    Applies a list of translations to a string content.
+    (Default Strategy) Applies a list of translations to a raw string content.
 
     Why: This helper isolates the core string manipulation logic. It sorts matches
     in reverse order of their position in the text. This is a critical detail:
     by applying changes from the end of the file to the beginning, we ensure that
     the character indices (spans) of earlier matches are not invalidated by
-    the length changes from later replacements.
+    the length changes from later replacements. This is the fallback for unstructured files.
     """
     # Sort matches by their starting position in reverse order.
     for match in sorted(matches, key=lambda m: m.span[0], reverse=True):
@@ -311,29 +290,113 @@ def _apply_translations_to_content(content: str, matches: List[TextMatch]) -> st
     return content
 
 
-def _write_to_file(file_path: Path, file_matches: List[TextMatch], task: TranslationTask):
+def _apply_translations_to_structured_data(
+    content: str,
+    matches: List[TextMatch],
+    loader: Callable[[str], Any],
+    dumper: Callable[[Any], str],
+    error_type: type[Exception],
+    error_message: str,
+) -> str:
     """
-    Reads a file, applies translations, and writes back the modified content.
+    (Generic Structured Strategy) Applies translations to a structured string (JSON/YAML) by parsing it first.
 
-    Why: This function orchestrates the write-back process for a single file.
-    It handles file I/O, detects the original newline character to preserve it,
-    and coordinates the application of translations before writing to the
-    correct output path.
+    This function walks through the nested data structure and replaces string values
+    that match the 'original_text' of a provided match. If parsing fails, it
+    reverts to a simple string replacement strategy.
+    """
+    try:
+        data = loader(content)
+    except error_type:
+        logging.warning(f"{error_message} Falling back to string replacement.")
+        return _apply_translations_to_content(content, matches)
+
+    match_map = {match.original_text: match.translated_text for match in matches if match.translated_text}
+
+    def recursively_update(d: Any) -> Any:
+        if isinstance(d, dict):
+            return {key: recursively_update(value) for key, value in d.items()}
+        if isinstance(d, list):
+            return [recursively_update(item) for item in d]
+        if isinstance(d, str) and d in match_map:
+            return match_map[d]
+        return d
+
+    updated_data = recursively_update(data)
+    return dumper(updated_data)
+
+
+def _apply_translations_to_json_structured(content: str, matches: List[TextMatch]) -> str:
+    """(JSON Strategy) Applies translations by parsing the content as JSON."""
+    return _apply_translations_to_structured_data(
+        content,
+        matches,
+        loader=json.loads,
+        dumper=lambda data: json.dumps(data, ensure_ascii=False, indent=4),
+        error_type=json.JSONDecodeError,
+        error_message="File is not valid JSON.",
+    )
+
+
+def _apply_translations_to_yaml_structured(content: str, matches: List[TextMatch]) -> str:
+    """(YAML Strategy) Applies translations by parsing the content as YAML."""
+    return _apply_translations_to_structured_data(
+        content,
+        matches,
+        loader=yaml.safe_load,
+        dumper=lambda data: yaml.dump(data, allow_unicode=True, sort_keys=False),
+        error_type=yaml.YAMLError,
+        error_message="File is not valid YAML.",
+    )
+
+
+# Strategy mapping for different file types
+WRITER_STRATEGIES: Dict[str, Callable[[str, List[TextMatch]], str]] = {
+    ".json": _apply_translations_to_json_structured,
+    ".yaml": _apply_translations_to_yaml_structured,
+    ".yml": _apply_translations_to_yaml_structured,
+}
+
+
+def _apply_translations_by_strategy(content: str, matches: List[TextMatch], file_path: Path) -> str:
+    """
+    Selects the appropriate writing strategy based on file extension.
+    """
+    file_extension = file_path.suffix.lower()
+    strategy = WRITER_STRATEGIES.get(file_extension, _apply_translations_to_content)
+    logging.info(f"Using '{strategy.__name__}' strategy for {file_path.name}")
+    return strategy(content, matches)
+
+
+def _read_file_for_writing(file_path: Path) -> Tuple[str, str | None]:
+    """Reads a file's content and detects its newline character for consistent writing."""
+    original_newline = _detect_newline(file_path)
+    content = file_path.read_text("utf-8")
+    return content, original_newline
+
+
+def _orchestrate_file_write(file_path: Path, file_matches: List[TextMatch], task: TranslationTask):
+    """
+    Orchestrates reading, modifying, and writing for a single file.
+    This function was created by refactoring the original _write_to_file to
+    break it down into smaller, more manageable pieces.
     """
     try:
         logging.info(f"Processing {file_path}: {len(file_matches)} translations to apply.")
-        original_newline = _detect_newline(file_path)
-        original_content = file_path.read_text("utf-8")
 
-        modified_content = _apply_translations_to_content(original_content, file_matches)
+        # 1. Read source file
+        original_content, original_newline = _read_file_for_writing(file_path)
 
+        # 2. Apply translations to content
+        modified_content = _apply_translations_by_strategy(original_content, file_matches, file_path)
+
+        # 3. Write modified content to the correct output path
         output_path = _get_output_path(file_path, task)
         if output_path:
             _write_modified_content(output_path, modified_content, newline=original_newline)
         else:
-            # This case occurs if the configuration is set for an output directory
-            # but no directory is specified. It's a safeguard.
             logging.warning(f"Output path is not defined for a non-in-place task. Skipping write-back for {file_path}.")
+
     except OSError as e:
         logging.error(f"Could not read or write file {file_path}: {e}")
     except Exception as e:
@@ -344,10 +407,10 @@ def precise_write_back(matches: List[TextMatch], task: TranslationTask):
     """
     Groups matches by file and writes the translated content back.
 
-    Why: This is the entry point for the entire write-back phase. It groups all
-    processed matches by their source file to ensure that each file is read
-    and written only once, which is much more efficient than processing matches
-    one-by-one.
+    Why: This function was refactored to improve clarity and reduce complexity by
+    delegating the file I/O orchestration to a new `_orchestrate_file_write` helper,
+    which in turn uses more specialized functions for reading and writing. This
+    adheres to the Single Responsibility Principle.
     """
     if not matches:
         logging.info("No matches with translated text to write back.")
@@ -357,7 +420,7 @@ def precise_write_back(matches: List[TextMatch], task: TranslationTask):
     logging.info(f"Writing back translations for {len(matches_by_file)} files.")
 
     for file_path, file_matches in matches_by_file.items():
-        _write_to_file(file_path, file_matches, task)
+        _orchestrate_file_write(file_path, file_matches, task)
 
 
 def _phase_1_capture(task: TranslationTask, config: GlocalConfig) -> Tuple[List[Path], List[TextMatch]]:

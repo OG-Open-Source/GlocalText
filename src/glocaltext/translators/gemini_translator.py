@@ -6,8 +6,17 @@ import time
 from typing import Dict, List, Optional
 
 from google import genai
+from google.api_core import exceptions as google_exceptions
 from google.genai import types
+from tenacity import (
+    RetryError,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
+from ..config import ProviderSettings
 from ..models import TranslationResult
 from .base import BaseTranslator
 
@@ -49,7 +58,12 @@ class GeminiTranslator(BaseTranslator):
     and handling errors and token counting.
     """
 
-    def __init__(self, api_key: Optional[str], model_name: str = "gemini-1.0-pro"):
+    def __init__(
+        self,
+        api_key: Optional[str],
+        model_name: str = "gemini-1.0-pro",
+        provider_settings: Optional[ProviderSettings] = None,
+    ):
         """
         Initialize the Gemini Translator.
 
@@ -57,6 +71,7 @@ class GeminiTranslator(BaseTranslator):
             api_key: The API key for the Gemini service. If not provided, it will
                      fall back to the `GEMINI_API_KEY` environment variable.
             model_name: The specific Gemini model to use for translations.
+            provider_settings: Provider-specific settings, including retry logic.
 
         Raises:
             ValueError: If no API key is found.
@@ -70,6 +85,24 @@ class GeminiTranslator(BaseTranslator):
         try:
             self.client = genai.Client(api_key=final_api_key)
             self.model_name = model_name
+            self.provider_settings = provider_settings or ProviderSettings()
+
+            # Define retry settings with defaults
+            retry_attempts = self.provider_settings.retry_attempts or 3
+            retry_delay = self.provider_settings.retry_delay or 1.0
+            retry_backoff_factor = self.provider_settings.retry_backoff_factor or 2.0
+
+            # Dynamically create a decorated method for translation attempts
+            self._decorated_translate = retry(
+                stop=stop_after_attempt(retry_attempts),
+                wait=wait_exponential(
+                    multiplier=retry_delay,
+                    exp_base=retry_backoff_factor,
+                ),
+                retry=retry_if_exception_type(google_exceptions.ResourceExhausted),
+                before_sleep=lambda retry_state: logging.info(f"Gemini API resource exhausted. Retrying in {retry_state.next_action.sleep:.2f} seconds..." if retry_state.next_action else "Retrying Gemini API call..."),
+            )(self._translate_attempt)
+
         except Exception as e:
             raise ConnectionError(f"Failed to initialize Gemini client: {e}")
 
@@ -82,10 +115,10 @@ class GeminiTranslator(BaseTranslator):
         prompts: Dict[str, str] | None = None,
     ) -> List[TranslationResult]:
         """
-        Translate a list of texts using the Gemini generative model.
+        Translate a list of texts using the Gemini generative model with tenacity for retries.
 
         This method builds a detailed prompt, sends it to the Gemini API,
-        and processes the response to return structured translation results.
+        and processes the response. Retry logic is handled by the `tenacity` library.
 
         Args:
             texts: A list of texts to be translated.
@@ -95,46 +128,77 @@ class GeminiTranslator(BaseTranslator):
             prompts: An optional dictionary of custom prompts ('system' and 'user').
 
         Returns:
-            A list of TranslationResult objects, one for each input text.
-            In case of a major API failure, it returns the original texts.
+            A list of TranslationResult objects. If retries fail, returns original texts.
         """
         if not texts:
             return []
 
-        prompt = ""
+        prompt, system_instruction = self._build_prompt(texts, target_language, source_language, prompts)
+
         try:
-            prompt, system_instruction = self._build_prompt(texts, target_language, source_language, prompts)
-
-            prompt_tokens = self._count_tokens(prompt)
-            if debug:
-                logging.info(f"[DEBUG] Gemini Request:\n- Model: {self.model_name}\n- Prompt Tokens: {prompt_tokens}\n- Prompt Body (first 200 chars): {prompt[:200]}...")
-
-            start_time = time.time()
-
-            config = types.GenerateContentConfig(response_mime_type="application/json", system_instruction=system_instruction)
-
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=[prompt],
-                config=config,
+            return self._decorated_translate(
+                prompt=prompt,
+                system_instruction=system_instruction,
+                texts_count=len(texts),
+                debug=debug,
             )
-            duration = time.time() - start_time
-
-            response_text = response.text or ""
-            response_tokens = self._count_tokens(response.candidates[0].content) if response.candidates and response.candidates[0].content else 0
-            total_tokens = prompt_tokens + response_tokens
-
-            if debug:
-                logging.info(f"[DEBUG] Gemini Response:\n- Duration: {duration:.2f}s\n- Completion Tokens: {response_tokens}\n- Total Tokens: {total_tokens}\n- Response Text (first 200 chars): {response_text[:200]}...")
-
-            translated_texts = self._parse_and_validate_response(response_text, len(texts))
-            return self._package_results(translated_texts, total_tokens)
-
+        except RetryError as e:
+            logging.error(f"Gemini API request failed after multiple retries: {e}. Returning original texts.")
+            if prompt:
+                logging.debug(f"Failed prompt for Gemini after all retries: \n{prompt}")
+            return [TranslationResult(translated_text=text) for text in texts]
         except Exception as e:
-            logging.error(f"Gemini API request failed: {e}. Returning original texts.")
+            logging.error(f"Gemini API request failed with a non-retriable error: {e}. Returning original texts.")
             if prompt:
                 logging.debug(f"Failed prompt for Gemini: \n{prompt}")
             return [TranslationResult(translated_text=text) for text in texts]
+
+    def _translate_attempt(
+        self,
+        prompt: str,
+        system_instruction: Optional[str],
+        texts_count: int,
+        debug: bool,
+    ) -> List[TranslationResult]:
+        """
+        Executes a single translation attempt by calling the Gemini API.
+
+        This method is decorated with `tenacity.retry` in the `__init__` method.
+
+        Args:
+            prompt: The full prompt to send to the API.
+            system_instruction: The system-level instructions for the model.
+            texts_count: The number of texts to be translated.
+            debug: If True, enables detailed logging.
+
+        Returns:
+            A list of TranslationResult objects.
+
+        Raises:
+            google_exceptions.ResourceExhausted: If the API returns a resource exhausted error.
+        """
+        prompt_tokens = self._count_tokens(prompt)
+        if debug:
+            logging.info(f"[DEBUG] Gemini Request:\n- Model: {self.model_name}\n- Prompt Tokens: {prompt_tokens}\n- Prompt Body (first 200 chars): {prompt[:200]}...")
+
+        start_time = time.time()
+        config = types.GenerateContentConfig(response_mime_type="application/json", system_instruction=system_instruction)
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=[prompt],
+            config=config,
+        )
+        duration = time.time() - start_time
+
+        response_text = response.text or ""
+        response_tokens = self._count_tokens(response.candidates[0].content) if response.candidates and response.candidates[0].content else 0
+        total_tokens = prompt_tokens + response_tokens
+
+        if debug:
+            logging.info(f"[DEBUG] Gemini Response:\n- Duration: {duration:.2f}s\n- Completion Tokens: {response_tokens}\n- Total Tokens: {total_tokens}\n- Response Text (first 200 chars): {response_text[:200]}...")
+
+        translated_texts = self._parse_and_validate_response(response_text, texts_count)
+        return self._package_results(translated_texts, total_tokens)
 
     def _build_prompt(
         self,

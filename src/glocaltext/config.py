@@ -38,6 +38,9 @@ class ProviderSettings:
     api_key: str | None = None
     model: str | None = None
     batch_options: BatchOptions = field(default_factory=BatchOptions)
+    retry_attempts: Optional[int] = 3
+    retry_delay: Optional[float] = 1.0
+    retry_backoff_factor: Optional[float] = 2.0
 
 
 @dataclass
@@ -170,6 +173,34 @@ class GlocalConfig:
     report_options: ReportOptions = field(default_factory=ReportOptions)
 
     @staticmethod
+    def _handle_manual_translations(task_data: Dict[str, Any]) -> List[Rule]:
+        """Handles backward compatibility for 'manual_translations' and 'glossary'."""
+        rules = []
+        manual_translations = task_data.get("manual_translations", task_data.get("glossary", {}))
+        for source, target in manual_translations.items():
+            rules.append(Rule(match={"exact": source}, action={"action": "replace", "value": target}))
+        return rules
+
+    @staticmethod
+    def _handle_keyword_replacements(task_data: Dict[str, Any]) -> List[Rule]:
+        """Handles backward compatibility for 'keyword_replacements'."""
+        rules = []
+        keyword_replacements = task_data.get("keyword_replacements", {})
+        for keyword, replacement in keyword_replacements.items():
+            rules.append(Rule(match={"contains": keyword}, action={"action": "modify", "value": replacement}))
+        return rules
+
+    @staticmethod
+    def _handle_skip_translations(task_data: Dict[str, Any], global_skip_translations: List[str]) -> List[Rule]:
+        """Handles backward compatibility for 'skip_translations'."""
+        rules = []
+        task_skip = task_data.get("skip_translations", [])
+        all_skips = set(global_skip_translations) | set(task_skip)
+        for text in all_skips:
+            rules.append(Rule(match={"exact": text}, action={"action": "skip"}))
+        return rules
+
+    @staticmethod
     def _apply_backward_compatibility_rules(task_data: Dict[str, Any], global_skip_translations: List[str]) -> List[Rule]:
         """
         Builds a list of rules from various legacy configuration fields.
@@ -177,33 +208,21 @@ class GlocalConfig:
         This is to ensure backward compatibility with older configuration formats that defined
         rules like glossaries, keyword replacements, and skip lists outside the main 'rules' list.
         """
+        # Start with rules from the new 'rules' field
         rules = [Rule(**r) for r in task_data.get("rules", [])]
 
-        # Backward compatibility for 'manual_translations' (now a 'replace' rule)
-        manual_translations = task_data.get("manual_translations", task_data.get("glossary", {}))
-        for source, target in manual_translations.items():
-            rules.append(
-                Rule(
-                    match={"exact": source},
-                    action={"action": "replace", "value": target},
-                )
-            )
+        # Define a list of backward compatibility rule handlers
+        rule_handlers = [
+            GlocalConfig._handle_manual_translations,
+            GlocalConfig._handle_keyword_replacements,
+        ]
 
-        # Backward compatibility for 'keyword_replacements' (now a 'modify' rule)
-        keyword_replacements = task_data.get("keyword_replacements", {})
-        for keyword, replacement in keyword_replacements.items():
-            rules.append(
-                Rule(
-                    match={"contains": keyword},
-                    action={"action": "modify", "value": replacement},
-                )
-            )
+        # Apply each handler to the task data
+        for handler in rule_handlers:
+            rules.extend(handler(task_data))
 
-        # Combine global and task-level skip lists for backward compatibility
-        task_skip = task_data.get("skip_translations", [])
-        all_skips = set(global_skip_translations) | set(task_skip)
-        for text in all_skips:
-            rules.append(Rule(match={"exact": text}, action={"action": "skip"}))
+        # Handle skip translations, which also requires global skips
+        rules.extend(GlocalConfig._handle_skip_translations(task_data, global_skip_translations))
 
         return rules
 
@@ -275,11 +294,10 @@ class GlocalConfig:
                 # Handles case like `mock:` which parses to `None`
                 p_config = {}
 
-            return ProviderSettings(
-                api_key=p_config.get("api_key"),
-                model=p_config.get("model"),
-                batch_options=BatchOptions(**p_config.get("batch_options", {})),
-            )
+            if "batch_options" in p_config:
+                p_config["batch_options"] = BatchOptions(**p_config.pop("batch_options", {}))
+
+            return ProviderSettings(**p_config)
 
         providers = Providers(
             gemini=_parse_provider_settings("gemini"),

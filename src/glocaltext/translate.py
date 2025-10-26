@@ -13,12 +13,34 @@ from .translators.google_translator import GoogleTranslator
 from .translators.mock_translator import MockTranslator
 
 
+def _validate_gemini_settings(gemini_settings) -> str:
+    """
+    Validates Gemini provider settings and returns the API key.
+
+    Args:
+        gemini_settings: The Gemini provider settings from the config.
+
+    Returns:
+        The validated API key.
+
+    Raises:
+        ValueError: If the Gemini provider is not configured or the API key is missing.
+    """
+    if not gemini_settings:
+        raise ValueError("Gemini provider is not configured.")
+
+    api_key = os.environ.get("GEMINI_API_KEY") or gemini_settings.api_key
+    if not api_key:
+        raise ValueError("Gemini API key is not provided via environment variable (GEMINI_API_KEY) or config file.")
+    return api_key
+
+
 def _initialize_gemini(config: GlocalConfig, translators: Dict[str, BaseTranslator]) -> None:
     """
     Initialize the Gemini translation provider.
 
-    Checks for configuration and API keys (from environment variables or config file)
-    and adds an instance of GeminiTranslator to the translators dictionary if successful.
+    Checks for configuration and API keys and adds an instance of GeminiTranslator
+    to the translators dictionary if successful.
 
     Args:
         config: The application's configuration object.
@@ -27,20 +49,22 @@ def _initialize_gemini(config: GlocalConfig, translators: Dict[str, BaseTranslat
     if not config.providers.gemini:
         return
 
-    api_key = os.environ.get("GEMINI_API_KEY") or config.providers.gemini.api_key
-    if api_key:
-        try:
-            translators["gemini"] = GeminiTranslator(
-                api_key=api_key,
-                model_name=config.providers.gemini.model or "gemini-1.0-pro",
-            )
-            gemini_translator = translators["gemini"]
-            if isinstance(gemini_translator, GeminiTranslator):
-                logging.info(f"Gemini provider initialized with default model '{gemini_translator.model_name}'.")
-        except Exception as e:
-            logging.error(f"Failed to initialize Gemini provider: {e}")
-    else:
-        logging.warning("Gemini provider is configured but no API key was found. It will be unavailable.")
+    try:
+        api_key = _validate_gemini_settings(config.providers.gemini)
+        gemini_translator = GeminiTranslator(
+            api_key=api_key,
+            model_name=config.providers.gemini.model or "gemini-1.0-pro",
+            provider_settings=config.providers.gemini,
+        )
+        translators["gemini"] = gemini_translator
+        logging.info(f"Gemini provider initialized with default model '{gemini_translator.model_name}'.")
+    except ValueError:
+        # Log as a warning because the app can fall back to other providers.
+        logging.warning("Gemini translator could not be initialized due to incomplete settings.")
+        return
+    except Exception as e:
+        # Log as warning because the app can fall back to other providers.
+        logging.warning(f"Gemini provider could not be initialized and will be unavailable: {e}")
 
 
 def _initialize_mock(config: GlocalConfig, translators: Dict[str, BaseTranslator]) -> None:
