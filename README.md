@@ -97,6 +97,28 @@ tasks:
       # ... other task settings
 ```
 
+### Provider Settings
+
+You can configure provider-specific settings under the `providers` key. For instance, for the `gemini` provider, you can specify the model and retry parameters.
+
+These settings offer fine-grained control over API interactions:
+
+-   `model`: Specifies the model to use (e.g., `"gemini-flash-lite-latest"`).
+-   `retry_attempts`: The number of times to retry a failed API call.
+-   `retry_delay`: The delay in seconds between retries.
+-   `retry_backoff_factor`: A multiplier to increase the delay between subsequent retries (e.g., a factor of `2` results in delays of 1s, 2s, 4s, ...).
+
+In addition to retry logic, GlocalText now includes a powerful **intelligent scheduling and batching system** to maximize throughput while respecting API rate limits. You can control this system using the following optional parameters:
+
+-   `rpm` (requests per minute): The maximum number of API requests allowed per minute.
+-   `tpm` (tokens per minute): The maximum number of tokens that can be processed per minute.
+-   `rpd` (requests per day): The maximum number of API requests allowed per day.
+-   `batch_size`: The number of texts to group into a single API call.
+
+GlocalText uses these values to automatically manage API calls, batching texts together and spacing out requests to avoid exceeding provider limits. This ensures high efficiency for large translation jobs.
+
+**Importantly**, all of these parameters, including the new scheduling options and the existing `model` and retry settings, are **optional**. If you do not provide any scheduling parameters, GlocalText will revert to its default behavior of submitting all texts in a single batch. If you only provide an `api_key`, GlocalText will use sensible defaults for all other settings (`model: "gemini-flash-lite-latest"`, `retry_attempts: 3`).
+
 ### API Key Configuration
 
 API keys are configured under the `providers` section. GlocalText follows a clear priority for API key resolution:

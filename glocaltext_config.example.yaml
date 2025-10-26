@@ -12,12 +12,21 @@ providers:
     # API key will be read from here first.
     # If not provided, it will fall back to the GEMINI_API_KEY environment variable.
     # api_key: GEMINI_API_KEY
-    model: "gemini-2.5-flash-lite"
+    # model: "gemini-flash-lite-latest" # Optional, defaults to "gemini-flash-lite-latest"
+    # Optional: Retry settings for handling API rate limits
+    # retry_attempts: 3 # Optional, defaults to 3
+    # retry_delay: 1.0 # Optional, defaults to 1.0
+    # retry_backoff_factor: 2.0 # Optional, defaults to 2.0
+    # Optional: Intelligent scheduling and batching parameters
+    # rpm: 5000 # Requests per minute limit
+    # tpm: 1000000 # Tokens per minute limit
+    # rpd: 100000 # Requests per day limit
+    # batch_size: 10 # Number of texts to batch into a single API call
 
-# ===================================================================
-# 2. Translation Tasks
-# ===================================================================
-# Define a list of translation jobs. Each job is a self-contained task.
+    # ===================================================================
+    # 2. Translation Tasks
+    # ===================================================================
+    # Define a list of translation jobs. Each job is a self-contained task.
 tasks:
 - name: "Translate Markdown Docs to Traditional Chinese"
   enabled: true
@@ -71,7 +80,6 @@ tasks:
     # Available placeholders: {stem}, {ext}, {source_lang}, {target_lang}
     # If `filename` is provided, `filename_suffix` is ignored.
     filename: "{stem}_{target_lang}{ext}"
-
     # Alternatively, you can provide a fixed filename.
     # filename: "my-custom-output-file.md"
     # Legacy: Suffix to append to the original filename.
@@ -135,4 +143,3 @@ tasks:
         # The original content was replaced by this rule.
         # Original content: \1
         print("Hello, GlocalText!")
-        ```

@@ -1,9 +1,8 @@
 # Implementation for the Gemini AI API using the latest google-genai SDK
 import json
 import logging
-import os
 import time
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from google import genai
 from google.api_core import exceptions as google_exceptions
@@ -44,10 +43,6 @@ Translate the following JSON array of texts:
 """
 
 
-# Model-specific configurations including rate limits (RPM/TPM) and batch sizes.
-GEMINI_MODEL_CONFIGS = {"gemma-3n-e4b-it": {"rpm": 30, "tpm": 15000, "batch_size": 10}}
-
-
 class GeminiTranslator(BaseTranslator):
     """
     A translator that uses the official Google Generative AI (Gemini) SDK.
@@ -58,53 +53,70 @@ class GeminiTranslator(BaseTranslator):
     and handling errors and token counting.
     """
 
-    def __init__(
-        self,
-        api_key: Optional[str],
-        model_name: str = "gemini-1.0-pro",
-        provider_settings: Optional[ProviderSettings] = None,
-    ):
+    def __init__(self, settings: ProviderSettings):
         """
         Initialize the Gemini Translator.
 
+        This constructor is responsible for validating the provided settings,
+        extracting the API key, and configuring the Gemini client. It will
+        raise a `ValueError` if essential settings (like the API key)
+        are missing.
+
         Args:
-            api_key: The API key for the Gemini service. If not provided, it will
-                     fall back to the `GEMINI_API_KEY` environment variable.
-            model_name: The specific Gemini model to use for translations.
-            provider_settings: Provider-specific settings, including retry logic.
+            settings: A Pydantic model containing provider-specific configurations
+                      such as the API key, model name, and retry policies.
 
         Raises:
-            ValueError: If no API key is found.
+            ValueError: If the API key is missing from the settings.
             ConnectionError: If the Gemini client fails to initialize.
         """
-        final_api_key = api_key or os.getenv("GEMINI_API_KEY")
+        super().__init__(settings)
+        if not self.settings:
+            # This check satisfies the linter, as the base class defines settings as Optional.
+            # Due to this constructor's signature, this path should not be reachable.
+            raise ValueError("ProviderSettings are required for GeminiTranslator but were not provided.")
 
-        if not final_api_key:
-            raise ValueError("Gemini API key not found. Please provide it in config.yaml or set the GEMINI_API_KEY environment variable.")
+        if not self.settings.api_key:
+            raise ValueError("API key for Gemini is missing in the provider settings.")
 
         try:
-            self.client = genai.Client(api_key=final_api_key)
-            self.model_name = model_name
-            self.provider_settings = provider_settings or ProviderSettings()
-
-            # Define retry settings with defaults
-            retry_attempts = self.provider_settings.retry_attempts or 3
-            retry_delay = self.provider_settings.retry_delay or 1.0
-            retry_backoff_factor = self.provider_settings.retry_backoff_factor or 2.0
+            # Configure the Gemini client with the API key from settings
+            self.client = genai.Client(api_key=self.settings.api_key)
+            self.model_name = self.settings.model or "gemini-1.0-pro"
 
             # Dynamically create a decorated method for translation attempts
-            self._decorated_translate = retry(
-                stop=stop_after_attempt(retry_attempts),
-                wait=wait_exponential(
-                    multiplier=retry_delay,
-                    exp_base=retry_backoff_factor,
-                ),
-                retry=retry_if_exception_type(google_exceptions.ResourceExhausted),
-                before_sleep=lambda retry_state: logging.info(f"Gemini API resource exhausted. Retrying in {retry_state.next_action.sleep:.2f} seconds..." if retry_state.next_action else "Retrying Gemini API call..."),
-            )(self._translate_attempt)
+            retry_decorator = self._create_retry_decorator(self.settings)
+            self._decorated_translate = retry_decorator(self._translate_attempt)
 
         except Exception as e:
             raise ConnectionError(f"Failed to initialize Gemini client: {e}")
+
+    def _create_retry_decorator(self, settings: ProviderSettings) -> Callable:
+        """
+        Creates and configures a tenacity retry decorator based on provider settings.
+
+        This helper function centralizes the retry logic, making the __init__
+        method cleaner and more focused on its primary responsibilities.
+
+        Args:
+            settings: Provider-specific configurations containing retry parameters.
+
+        Returns:
+            A configured tenacity retry decorator.
+        """
+        retry_attempts = settings.retry_attempts or 3
+        retry_delay = settings.retry_delay or 1.0
+        retry_backoff_factor = settings.retry_backoff_factor or 2.0
+
+        return retry(
+            stop=stop_after_attempt(retry_attempts),
+            wait=wait_exponential(
+                multiplier=retry_delay,
+                exp_base=retry_backoff_factor,
+            ),
+            retry=retry_if_exception_type(google_exceptions.ResourceExhausted),
+            before_sleep=lambda retry_state: logging.info(f"Gemini API resource exhausted. Retrying in {retry_state.next_action.sleep:.2f} seconds..." if retry_state.next_action else "Retrying Gemini API call..."),
+        )
 
     def translate(
         self,
@@ -177,7 +189,7 @@ class GeminiTranslator(BaseTranslator):
         Raises:
             google_exceptions.ResourceExhausted: If the API returns a resource exhausted error.
         """
-        prompt_tokens = self._count_tokens(prompt)
+        prompt_tokens = self._count_api_tokens(prompt)
         if debug:
             logging.info(f"[DEBUG] Gemini Request:\n- Model: {self.model_name}\n- Prompt Tokens: {prompt_tokens}\n- Prompt Body (first 200 chars): {prompt[:200]}...")
 
@@ -191,7 +203,7 @@ class GeminiTranslator(BaseTranslator):
         duration = time.time() - start_time
 
         response_text = response.text or ""
-        response_tokens = self._count_tokens(response.candidates[0].content) if response.candidates and response.candidates[0].content else 0
+        response_tokens = self._count_api_tokens(response.candidates[0].content) if response.candidates and response.candidates[0].content else 0
         total_tokens = prompt_tokens + response_tokens
 
         if debug:
@@ -239,8 +251,21 @@ class GeminiTranslator(BaseTranslator):
         system_instruction = prompts.get("system") if prompts else None
         return prompt, system_instruction
 
-    def _count_tokens(self, content: str | types.ContentDict | types.Content) -> int:
-        """Counts the tokens for the given content, handling potential errors."""
+    def count_tokens(self, texts: List[str], prompts: Optional[Dict[str, str]] = None) -> int:
+        """
+        Calculates the total number of tokens for a list of texts by building the
+        full prompt and submitting it to the token counting API.
+        """
+        if not texts:
+            return 0
+        # We need to build the prompt to get an accurate token count, as it includes
+        # templates, JSON formatting, and other overhead.
+        # Target and source languages are placeholders as they have minimal impact on token count.
+        prompt, _ = self._build_prompt(texts=texts, target_language="xx", source_language="xx", prompts=prompts)
+        return self._count_api_tokens(prompt)
+
+    def _count_api_tokens(self, content: str | types.ContentDict | types.Content) -> int:
+        """Counts the tokens for the given content by calling the API."""
         if not content:
             return 0
         try:

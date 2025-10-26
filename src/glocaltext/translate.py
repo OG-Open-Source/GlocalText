@@ -1,111 +1,77 @@
 import logging
-import os
+import time
 from collections import defaultdict
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import regex
 
-from .config import BatchOptions, GlocalConfig, Rule, TranslationTask
+from .config import GlocalConfig, ProviderSettings, Rule, TranslationTask
 from .models import TextMatch
+from .translators import TRANSLATOR_MAPPING
 from .translators.base import BaseTranslator
-from .translators.gemini_translator import GeminiTranslator
-from .translators.google_translator import GoogleTranslator
-from .translators.mock_translator import MockTranslator
+
+logger = logging.getLogger(__name__)
+
+# A cache to store initialized translator instances to avoid re-creating them.
+_translator_cache: Dict[str, BaseTranslator] = {}
+# A session-level counter for requests-per-day limits.
+_rpd_session_counts: Dict[str, int] = defaultdict(int)
 
 
-def _validate_gemini_settings(gemini_settings) -> str:
+def _get_translator(provider_name: str, settings: Optional[ProviderSettings]) -> Optional[BaseTranslator]:
     """
-    Validates Gemini provider settings and returns the API key.
+    Instantiates a translator class based on the provider name and settings.
+
+    This function acts as a factory, retrieving the correct translator class
+    from a central mapping and initializing it with the provided settings.
+    It includes a try-except block to gracefully handle initialization
+    errors, such as missing API keys.
 
     Args:
-        gemini_settings: The Gemini provider settings from the config.
+        provider_name: The name of the provider (e.g., "gemini", "google").
+        settings: The provider-specific settings object from the main config.
 
     Returns:
-        The validated API key.
-
-    Raises:
-        ValueError: If the Gemini provider is not configured or the API key is missing.
+        An initialized translator instance, or None if instantiation fails.
     """
-    if not gemini_settings:
-        raise ValueError("Gemini provider is not configured.")
-
-    api_key = os.environ.get("GEMINI_API_KEY") or gemini_settings.api_key
-    if not api_key:
-        raise ValueError("Gemini API key is not provided via environment variable (GEMINI_API_KEY) or config file.")
-    return api_key
-
-
-def _initialize_gemini(config: GlocalConfig, translators: Dict[str, BaseTranslator]) -> None:
-    """
-    Initialize the Gemini translation provider.
-
-    Checks for configuration and API keys and adds an instance of GeminiTranslator
-    to the translators dictionary if successful.
-
-    Args:
-        config: The application's configuration object.
-        translators: The dictionary of active translator instances.
-    """
-    if not config.providers.gemini:
-        return
+    translator_class = TRANSLATOR_MAPPING.get(provider_name)
+    if not translator_class:
+        logger.warning(f"Unknown translator provider: '{provider_name}'")
+        return None
 
     try:
-        api_key = _validate_gemini_settings(config.providers.gemini)
-        gemini_translator = GeminiTranslator(
-            api_key=api_key,
-            model_name=config.providers.gemini.model or "gemini-1.0-pro",
-            provider_settings=config.providers.gemini,
-        )
-        translators["gemini"] = gemini_translator
-        logging.info(f"Gemini provider initialized with default model '{gemini_translator.model_name}'.")
-    except ValueError:
-        # Log as a warning because the app can fall back to other providers.
-        logging.warning("Gemini translator could not be initialized due to incomplete settings.")
-        return
+        # The translator's __init__ is responsible for parsing its settings
+        # and raising ValueError if they are incomplete.
+        return translator_class(settings=settings)
     except Exception as e:
-        # Log as warning because the app can fall back to other providers.
-        logging.warning(f"Gemini provider could not be initialized and will be unavailable: {e}")
+        # Catches both ValueError for incomplete settings and other unexpected errors.
+        logger.warning(f"Could not initialize translator '{provider_name}': {e}")
+        return None
 
 
-def _initialize_mock(config: GlocalConfig, translators: Dict[str, BaseTranslator]) -> None:
+def get_translator(provider_name: str, config: GlocalConfig) -> Optional[BaseTranslator]:
     """
-    Initialize the Mock translation provider.
-
-    Used for testing and development to simulate translation without making real API calls.
+    Retrieves an initialized translator instance, using a cache to avoid re-initialization.
 
     Args:
-        config: The application's configuration object.
-        translators: The dictionary of active translator instances.
-    """
-    if config.providers.mock is not None:
-        translators["mock"] = MockTranslator()
-        logging.info("Mock provider initialized.")
-
-
-def initialize_translators(config: GlocalConfig) -> Dict[str, BaseTranslator]:
-    """
-    Initialize all available translation providers based on the configuration.
-
-    It dynamically initializes providers like Gemini and Mock, and always
-    sets up a Google Translate provider as a reliable fallback.
-
-    Args:
-        config: The application's configuration object.
+        provider_name: The name of the provider to retrieve.
+        config: The global configuration object.
 
     Returns:
-        A dictionary mapping provider names to their initialized translator instances.
+        An initialized and cached translator instance, or None if it fails.
     """
-    translators: Dict[str, BaseTranslator] = {}
+    if provider_name in _translator_cache:
+        return _translator_cache[provider_name]
 
-    _initialize_gemini(config, translators)
-    _initialize_mock(config, translators)
+    provider_settings = getattr(config.providers, provider_name, None)
 
-    # Always initialize Google as a fallback
-    if "google" not in translators:
-        translators["google"] = GoogleTranslator()
-        logging.info("Google (deep-translator) initialized as a fallback provider.")
+    translator = _get_translator(provider_name, provider_settings)
 
-    return translators
+    if translator:
+        _translator_cache[provider_name] = translator
+        logger.info(f"Provider '{provider_name}' initialized.")
+
+    return translator
 
 
 def _check_exact_match(text: str, rule: Rule) -> Tuple[bool, str | None]:
@@ -159,7 +125,7 @@ def _check_regex_match(text: str, rule: Rule) -> Tuple[bool, str | None]:
             if regex.search(r, text, regex.DOTALL):
                 return True, r
         except regex.error as e:
-            logging.warning(f"Invalid regex '{r}' in rule: {e}")
+            logger.warning(f"Invalid regex '{r}' in rule: {e}")
     return False, None
 
 
@@ -203,13 +169,13 @@ def _handle_modify_action(text: str, matched_value: str, rule: Rule) -> str:
     if rule.match.regex:
         try:
             modified_text = regex.sub(matched_value, rule.action.value, text, regex.DOTALL)
-            logging.debug(f"Text modified by regex rule: '{text}' -> '{modified_text}'")
+            logger.debug(f"Text modified by regex rule: '{text}' -> '{modified_text}'")
             return modified_text
         except regex.error as e:
-            logging.warning(f"Invalid regex substitution with pattern '{matched_value}': {e}")
+            logger.warning(f"Invalid regex substitution with pattern '{matched_value}': {e}")
             return text
     modified_text = text.replace(matched_value, rule.action.value)
-    logging.debug(f"Text modified by rule: '{text}' -> '{modified_text}'")
+    logger.debug(f"Text modified by rule: '{text}' -> '{modified_text}'")
     return modified_text
 
 
@@ -218,7 +184,7 @@ def _apply_simple_protection(text: str, matched_value: str, protected_map: Dict[
     if matched_value not in protected_map.values():
         placeholder_key = f"__PROTECT_{len(protected_map)}__"
         protected_map[placeholder_key] = matched_value
-        logging.debug(f"Protected text: '{matched_value}' replaced with '{placeholder_key}'")
+        logger.debug(f"Protected text: '{matched_value}' replaced with '{placeholder_key}'")
 
     placeholder = next((k for k, v in protected_map.items() if v == matched_value), None)
     return text.replace(matched_value, placeholder) if placeholder else text
@@ -243,7 +209,7 @@ def _apply_regex_protection(text: str, matched_value: str, protected_map: Dict[s
         new_text += text[last_end:]
         return new_text
     except regex.error as e:
-        logging.warning(f"Error during regex protection for pattern '{matched_value}': {e}")
+        logger.warning(f"Error during regex protection for pattern '{matched_value}': {e}")
         return text
 
 
@@ -339,29 +305,98 @@ def _apply_translation_rules(unique_texts: Dict[str, List[TextMatch]], task: Tra
     return texts_to_translate_api, protected_maps
 
 
-def _create_batches(texts: List[str], batch_options: BatchOptions) -> List[List[str]]:
-    if not batch_options.enabled or not texts:
-        return [texts] if texts else []
+def _log_oversized_batch_warning(
+    translator: BaseTranslator,
+    batch: List[str],
+    tpm: int,
+    prompts: Optional[Dict[str, str]],
+):
+    """Checks and logs a warning if a single-item batch exceeds the TPM limit."""
+    single_item_tokens = translator.count_tokens(batch, prompts)
+    if single_item_tokens > tpm:
+        logger.warning(
+            f"A single text item ({single_item_tokens} tokens) exceeds the TPM limit ({tpm}). "
+            "It will be sent in an oversized batch. This may cause API errors."
+        )
+
+
+def _create_simple_batches(texts_to_translate: List[str], batch_size: int) -> List[List[str]]:
+    """Creates simple, size-based batches."""
+    if not texts_to_translate:
+        return []
+    effective_batch_size = batch_size if batch_size > 0 else len(texts_to_translate)
+    if not effective_batch_size:
+        return []
+    return [texts_to_translate[i : i + effective_batch_size] for i in range(0, len(texts_to_translate), effective_batch_size)]
+
+
+def _create_smart_batches(
+    translator: BaseTranslator,
+    texts_to_translate: List[str],
+    batch_size: int,
+    tpm: int,
+    prompts: Optional[Dict[str, str]],
+) -> List[List[str]]:
+    """Creates smart batches considering size and token limits."""
     batches: List[List[str]] = []
-    for i in range(0, len(texts), batch_options.batch_size):
-        batches.append(texts[i : i + batch_options.batch_size])
+    current_batch: List[str] = []
+
+    for text in texts_to_translate:
+        if not current_batch:
+            current_batch.append(text)
+            _log_oversized_batch_warning(translator, current_batch, tpm, prompts)
+        else:
+            predicted_batch = current_batch + [text]
+            predicted_tokens = translator.count_tokens(predicted_batch, prompts)
+
+            if len(predicted_batch) <= batch_size and predicted_tokens <= tpm:
+                current_batch = predicted_batch
+            else:
+                batches.append(current_batch)
+                current_batch = [text]
+                _log_oversized_batch_warning(translator, current_batch, tpm, prompts)
+
+    if current_batch:
+        batches.append(current_batch)
+
     return batches
 
 
-def _select_provider(task: TranslationTask, translators: Dict[str, BaseTranslator]) -> str:
+def _create_batches(
+    translator: BaseTranslator,
+    texts_to_translate: List[str],
+    batch_size: int,
+    tpm: Optional[int],
+    prompts: Optional[Dict[str, str]],
+) -> List[List[str]]:
+    """Creates smart batches by delegating to simple or smart batching strategies."""
+    provider_settings = translator.settings
+    if not provider_settings or not provider_settings.batch_options.enabled or tpm is None:
+        return _create_simple_batches(texts_to_translate, batch_size)
+
+    if not texts_to_translate:
+        return []
+
+    return _create_smart_batches(translator, texts_to_translate, batch_size, tpm, prompts)
+
+
+def _select_provider(task: TranslationTask, available_providers: List[str]) -> str:
     """Selects the translation provider based on task and availability, with robust fallbacks."""
     # 1. Use task-specific translator if specified.
     if task.translator:
-        if task.translator in translators:
+        if task.translator in available_providers:
             return task.translator
         else:
-            logging.warning(f"Task '{task.name}' specified translator '{task.translator}', but it is not available. Check your configuration and API keys. Falling back to default provider.")
+            logger.warning(f"Task '{task.name}' specified translator '{task.translator}', but it is not available. Check your configuration. Falling back to default provider.")
 
     # 2. Otherwise, fall back to a default provider in a preferred order.
-    if "gemini" in translators:
-        return "gemini"
-    if "mock" in translators:
-        return "mock"
+    preferred_order = ["gemini", "mock", "google"]
+    for provider in preferred_order:
+        if provider in available_providers:
+            return provider
+
+    # This should ideally not be reached if 'google' is always available,
+    # but as a safeguard, we return it.
     return "google"
 
 
@@ -381,7 +416,7 @@ def _translate_batch(
             prompts=task.prompts,
         )
     except Exception as e:
-        logging.error(f"Error translating batch with {provider_name}: {e}")
+        logger.error(f"Error translating batch with {provider_name}: {e}")
         return None
 
 
@@ -418,6 +453,41 @@ def _update_matches_on_failure(
             match.provider = f"error_{provider_name}"
 
 
+def _handle_rpd_limit(
+    provider_name: str,
+    rpd: Optional[int],
+    batches: List[List[str]],
+    current_batch_index: int,
+    texts_to_translate_api: Dict[str, List[TextMatch]],
+) -> bool:
+    """
+    Checks if the Requests Per Day (RPD) limit has been reached.
+
+    If the limit is reached, it logs a warning, marks all remaining matches
+    as failed, and returns True. Otherwise, it returns False.
+
+    Args:
+        provider_name: The name of the translation provider.
+        rpd: The configured RPD limit.
+        batches: The list of all batches to be processed.
+        current_batch_index: The index of the current batch being processed.
+        texts_to_translate_api: The dictionary of texts to translate.
+
+    Returns:
+        True if the RPD limit is reached, False otherwise.
+    """
+    global _rpd_session_counts
+    if rpd and _rpd_session_counts[provider_name] >= rpd:
+        logger.warning(
+            f"Request Per Day limit ({rpd}) for '{provider_name}' reached. "
+            f"Skipping remaining {len(batches) - current_batch_index} batches."
+        )
+        for remaining_batch in batches[current_batch_index:]:
+            _update_matches_on_failure(remaining_batch, texts_to_translate_api, "error_rpd_limit")
+        return True
+    return False
+
+
 def _translate_and_update_matches(
     translator: BaseTranslator,
     batches: List[List[str]],
@@ -426,12 +496,26 @@ def _translate_and_update_matches(
     config: GlocalConfig,
     provider_name: str,
     protected_maps: Dict[str, Dict[str, str]],
+    rpm: Optional[int],
+    rpd: Optional[int],
 ):
+    """Translates batches and handles rate limiting (RPM, RPD) and error handling."""
+    global _rpd_session_counts
+    delay = 60 / rpm if rpm and rpm > 0 else 0
+
     for i, batch in enumerate(batches):
         if not batch:
             continue
-        logging.info(f"Translating batch {i + 1}/{len(batches)} ({len(batch)} unique texts) using '{provider_name}'.")
+
+        if _handle_rpd_limit(provider_name, rpd, batches, i, texts_to_translate_api):
+            break
+
+        logger.info(f"Translating batch {i + 1}/{len(batches)} ({len(batch)} unique texts) using '{provider_name}'.")
         translated_results = _translate_batch(translator, batch, task, config.debug_options.enabled, provider_name)
+
+        if rpd:
+            _rpd_session_counts[provider_name] += 1
+
         if translated_results:
             _update_matches_on_success(
                 batch,
@@ -443,10 +527,13 @@ def _translate_and_update_matches(
         else:
             _update_matches_on_failure(batch, texts_to_translate_api, provider_name)
 
+        if i < len(batches) - 1 and delay > 0:
+            logger.info(f"RPM delay: sleeping for {delay:.2f} seconds.")
+            time.sleep(delay)
+
 
 def process_matches(
     matches: List[TextMatch],
-    translators: Dict[str, BaseTranslator],
     task: TranslationTask,
     config: GlocalConfig,
 ):
@@ -455,20 +542,45 @@ def process_matches(
     unique_texts: Dict[str, List[TextMatch]] = defaultdict(list)
     for match in matches:
         unique_texts[match.original_text].append(match)
-    logging.info(f"Found {len(unique_texts)} unique text strings to process for API translation.")
+    logger.info(f"Found {len(unique_texts)} unique text strings to process for API translation.")
     texts_to_translate_api, protected_maps = _apply_translation_rules(unique_texts, task)
     if not texts_to_translate_api:
-        logging.info("All texts were handled by pre-processing or were empty. No API call needed.")
+        logger.info("All texts were handled by pre-processing or were empty. No API call needed.")
         return
-    provider_name = _select_provider(task, translators)
-    logging.info(f"Translator for task '{task.name}': '{provider_name}' (Task-specific: {task.translator or 'Not set'}).")
-    translator = translators[provider_name]
+    provider_name = _select_provider(task, list(TRANSLATOR_MAPPING.keys()))
+    logger.info(f"Selected translator for task '{task.name}': '{provider_name}' (Task-specific: {task.translator or 'Not set'}).")
+    translator = get_translator(provider_name, config)
 
-    # Correctly getting provider settings
-    provider_settings = getattr(config.providers, provider_name, None)
-    batch_options = provider_settings.batch_options if provider_settings and hasattr(provider_settings, "batch_options") else BatchOptions()
+    # Fallback logic if the selected provider fails to initialize
+    if not translator:
+        logger.warning(f"Failed to initialize primary provider '{provider_name}'. Trying fallback 'google'.")
+        provider_name = "google"
+        translator = get_translator(provider_name, config)
+        if not translator:
+            logger.error("CRITICAL: Fallback provider 'google' also failed to initialize. Aborting translation.")
+            _update_matches_on_failure(list(texts_to_translate_api.keys()), texts_to_translate_api, "initialization_error")
+            return
 
-    batches = _create_batches(list(texts_to_translate_api.keys()), batch_options)
+    provider_settings = getattr(config.providers, provider_name, ProviderSettings())
+    rpm = provider_settings.rpm
+    tpm = provider_settings.tpm
+    rpd = provider_settings.rpd
+    batch_size = provider_settings.batch_size if provider_settings.batch_size is not None else 20
+
+    # If key rate limits are not set, fall back to a single, un-throttled batch.
+    if rpm is None or tpm is None:
+        logger.info(f"Provider '{provider_name}' is not configured for intelligent scheduling (RPM/TPM). Sending as a single batch.")
+        batches = [list(texts_to_translate_api.keys())]
+    else:
+        logger.info(f"Provider '{provider_name}' configured for intelligent scheduling: RPM={rpm}, TPM={tpm}, RPD={rpd or 'N/A'}.")
+        batches = _create_batches(
+            translator=translator,
+            texts_to_translate=list(texts_to_translate_api.keys()),
+            batch_size=batch_size,
+            tpm=tpm,
+            prompts=task.prompts,
+        )
+
     _translate_and_update_matches(
         translator,
         batches,
@@ -477,4 +589,6 @@ def process_matches(
         config,
         provider_name,
         protected_maps,
+        rpm=rpm,
+        rpd=rpd,
     )

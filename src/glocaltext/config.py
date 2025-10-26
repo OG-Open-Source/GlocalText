@@ -27,7 +27,6 @@ class BatchOptions:
     """Batching settings for a provider."""
 
     enabled: bool = True
-    batch_size: int = 20
     max_tokens_per_batch: int = 8000
 
 
@@ -36,8 +35,12 @@ class ProviderSettings:
     """Settings for a specific translation provider."""
 
     api_key: str | None = None
-    model: str | None = None
+    model: Optional[str] = "gemini-flash-lite-latest"
     batch_options: BatchOptions = field(default_factory=BatchOptions)
+    batch_size: Optional[int] = 20
+    rpm: Optional[int] = None
+    tpm: Optional[int] = None
+    rpd: Optional[int] = None
     retry_attempts: Optional[int] = 3
     retry_delay: Optional[float] = 1.0
     retry_backoff_factor: Optional[float] = 2.0
@@ -295,7 +298,12 @@ class GlocalConfig:
                 p_config = {}
 
             if "batch_options" in p_config:
-                p_config["batch_options"] = BatchOptions(**p_config.pop("batch_options", {}))
+                batch_opts_data = p_config.pop("batch_options", {})
+                if "batch_size" in batch_opts_data:
+                    # Move batch_size to the parent p_config if not already there,
+                    # for backward compatibility.
+                    p_config.setdefault("batch_size", batch_opts_data.pop("batch_size"))
+                p_config["batch_options"] = BatchOptions(**batch_opts_data)
 
             return ProviderSettings(**p_config)
 

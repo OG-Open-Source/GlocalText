@@ -1,12 +1,10 @@
 import argparse
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 from .config import GlocalConfig, load_config
 from .reporting import generate_summary_report
-from .translate import initialize_translators
-from .translators.base import BaseTranslator
 from .workflow import run_task
 
 
@@ -64,13 +62,12 @@ def _load_config(args: argparse.Namespace) -> Optional[GlocalConfig]:
         return None
 
 
-def _run_tasks(config: GlocalConfig, translators: Dict[str, BaseTranslator], incremental: bool) -> List[Any]:
+def _run_tasks(config: GlocalConfig, incremental: bool) -> List[Any]:
     """
     Iterate over and execute all enabled translation tasks.
 
     Args:
         config: The application's configuration object.
-        translators: A dictionary of initialized translator instances.
         incremental: A flag indicating whether to run in incremental mode.
 
     Returns:
@@ -82,7 +79,7 @@ def _run_tasks(config: GlocalConfig, translators: Dict[str, BaseTranslator], inc
             if incremental:
                 task.incremental = True
             logging.info(f"\n--- Running Task: {task.name} ---")
-            task_matches = run_task(task, translators, config)
+            task_matches = run_task(task, config)
             all_matches.extend(task_matches)
             logging.info(f"--- Task Finished: {task.name} ---")
     return all_matches
@@ -95,9 +92,8 @@ def main():
     Orchestrates the entire process:
     1. Parses command-line arguments.
     2. Loads the configuration.
-    3. Initializes translators.
-    4. Runs all enabled tasks.
-    5. Generates a summary report.
+    3. Runs all enabled tasks.
+    4. Generates a summary report.
     """
     start_time = time.time()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -107,8 +103,7 @@ def main():
         config = _load_config(args)
 
         if config:
-            translators = initialize_translators(config)
-            all_matches = _run_tasks(config, translators, args.incremental)
+            all_matches = _run_tasks(config, args.incremental)
             generate_summary_report(all_matches, start_time, config)
 
     except Exception as e:

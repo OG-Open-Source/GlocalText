@@ -10,10 +10,9 @@ import regex
 import yaml
 from google.generativeai.generative_models import GenerativeModel
 
-from .config import BatchOptions, GlocalConfig, TranslationTask
+from .config import GlocalConfig, ProviderSettings, TranslationTask
 from .models import TextMatch
 from .translate import apply_terminating_rules, process_matches
-from .translators.base import BaseTranslator
 
 # Define constants
 CACHE_FILE_NAME = ".glocaltext_cache.json"
@@ -92,15 +91,19 @@ def update_cache(cache_path: Path, task_name: str, matches_to_cache: List[TextMa
         logging.error(f"Could not write to cache file at {cache_path}: {e}")
 
 
-def create_token_based_batches(matches: List[TextMatch], model: GenerativeModel, batch_options: BatchOptions) -> List[List[TextMatch]]:
-    if not batch_options.enabled:
+def create_token_based_batches(matches: List[TextMatch], model: GenerativeModel, provider_settings: ProviderSettings) -> List[List[TextMatch]]:
+    batch_options = provider_settings.batch_options
+    batch_size = provider_settings.batch_size
+
+    if not batch_options.enabled or not batch_size or batch_size <= 0:
         return [matches] if matches else []
+
     batches: List[List[TextMatch]] = []
     current_batch: List[TextMatch] = []
     current_batch_tokens = 0
     for match in matches:
         match_tokens = model.count_tokens(match.original_text).total_tokens
-        if current_batch and ((current_batch_tokens + match_tokens > batch_options.max_tokens_per_batch) or (len(current_batch) >= batch_options.batch_size)):
+        if current_batch and ((current_batch_tokens + match_tokens > batch_options.max_tokens_per_batch) or (len(current_batch) >= batch_size)):
             batches.append(current_batch)
             current_batch = []
             current_batch_tokens = 0
@@ -464,11 +467,11 @@ def _phase_3_check_cache(remaining_matches: List[TextMatch], files_to_process: L
     return matches_to_translate, cached_matches
 
 
-def _phase_4_translate(matches_to_translate: List[TextMatch], translators: Dict[str, BaseTranslator], task: TranslationTask, config: GlocalConfig):
+def _phase_4_translate(matches_to_translate: List[TextMatch], task: TranslationTask, config: GlocalConfig):
     """Phase 4: Translate matches that were not handled by rules or cache."""
     if matches_to_translate:
         logging.info(f"Processing {len(matches_to_translate)} matches for API translation.")
-        process_matches(matches_to_translate, translators, task, config)
+        process_matches(matches_to_translate, task, config)
 
 
 def _phase_5_update_cache(matches_translated: List[TextMatch], files_to_process: List[Path], task: TranslationTask):
@@ -492,7 +495,7 @@ def _phase_6_write_back(all_processed_matches: List[TextMatch], task: Translatio
         precise_write_back(all_processed_matches, task)
 
 
-def run_task(task: TranslationTask, translators: Dict[str, BaseTranslator], config: GlocalConfig) -> List[TextMatch]:
+def run_task(task: TranslationTask, config: GlocalConfig) -> List[TextMatch]:
     """
     Runs a single translation task by orchestrating a multi-phase workflow.
 
@@ -512,7 +515,7 @@ def run_task(task: TranslationTask, translators: Dict[str, BaseTranslator], conf
     matches_to_translate, cached_matches = _phase_3_check_cache(remaining_matches, files_to_process, task)
 
     # Phase 4: Translate the remaining text via external APIs.
-    _phase_4_translate(matches_to_translate, translators, task, config)
+    _phase_4_translate(matches_to_translate, task, config)
 
     # Phase 5: Update the cache with the newly translated content.
     _phase_5_update_cache(matches_to_translate, files_to_process, task)

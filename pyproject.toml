@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "GlocalText"
-version = "3.2.0"
+version = "3.3.0"
 authors = [{ name = "OG-Open-Source" }]
 description = "A config-driven script to batch translate files using various providers."
 requires-python = ">=3.8"

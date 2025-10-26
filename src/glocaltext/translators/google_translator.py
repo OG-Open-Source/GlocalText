@@ -1,8 +1,9 @@
 # Implementation for the Google Translate API using deep-translator
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from deep_translator import GoogleTranslator as DeepGoogleTranslator
 
+from ..config import ProviderSettings
 from ..models import TranslationResult
 from .base import BaseTranslator
 
@@ -12,10 +13,17 @@ class GoogleTranslator(BaseTranslator):
     This does not require an API key for basic usage.
     """
 
-    def __init__(self):
-        """Initializes the Google Translator."""
+    def __init__(self, settings: ProviderSettings):
+        """
+        Initializes the Google Translator.
+
+        Args:
+            settings: Provider-specific configurations. This provider currently
+                      does not use any specific settings, but it is accepted
+                      for interface consistency.
+        """
+        super().__init__(settings)
         # deep-translator handles the client setup internally.
-        pass
 
     def translate(
         self,
@@ -52,3 +60,16 @@ class GoogleTranslator(BaseTranslator):
 
         except Exception as e:
             raise ConnectionError(f"deep-translator (Google) request failed: {e}")
+
+    def count_tokens(self, texts: List[str], prompts: Optional[Dict[str, str]] = None) -> int:
+        """
+        Estimates the token count for Google Translate.
+        This is a rough approximation as the underlying API does not expose token information.
+        We assume an average of 4 characters per token.
+        """
+        _ = prompts  # Prompts are not used by this provider
+        if not texts:
+            return 0
+        # Rough estimation: 4 characters per token.
+        total_chars = sum(len(text) for text in texts)
+        return total_chars // 4
