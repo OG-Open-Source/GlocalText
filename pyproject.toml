@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "GlocalText"
-version = "3.3.0"
+version = "3.3.1"
 authors = [{ name = "OG-Open-Source" }]
 description = "A config-driven script to batch translate files using various providers."
 requires-python = ">=3.8"
@@ -12,7 +12,13 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Operating System :: OS Independent",
 ]
-dependencies = ["deep-translator", "google-genai", "PyYAML", "regex", "tenacity~=8.2.3"]
+dependencies = [
+  "deep-translator",
+  "google-genai",
+  "PyYAML",
+  "regex",
+  "tenacity~=8.2.3",
+]
 
 [project.scripts]
 glocaltext = "glocaltext.__main__:main"
@@ -26,9 +32,7 @@ glocaltext = "glocaltext.__main__:main"
 where = ["src"]
 
 [tool.mypy]
-[[tool.mypy.overrides]]
-module = ["deep_translator", "yaml"]
-ignore_missing_imports = true
+exclude = ["build/"]
 
 [tool.ruff]
 line-length = 320

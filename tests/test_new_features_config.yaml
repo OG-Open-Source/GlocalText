@@ -1,14 +1,14 @@
 tasks:
-  - source_lang: en
-    target_lang: en
-    incremental: true
-    source:
-      include:
-        - "tests/test_doc_for_new_features.md"
-    extraction_rules:
-      - "^(.*?)$"
-    cache_path: "tests/temp_cache/"
-    output:
-      in_place: false
-      path: "tests/temp_output/"
-      filename: "final_exact_filename.txt"
+- source_lang: en
+  target_lang: en
+  incremental: true
+  source:
+    include:
+    - "tests/test_doc_for_new_features.md"
+  extraction_rules:
+  - "^(.*?)$"
+  cache_path: "tests/temp_cache/"
+  output:
+    in_place: false
+    path: "tests/temp_output/"
+    filename: "final_exact_filename.txt"

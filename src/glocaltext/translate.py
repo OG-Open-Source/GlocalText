@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Tuple
 import regex
 
 from .config import GlocalConfig, ProviderSettings, Rule, TranslationTask
-from .models import TextMatch
+from .models import PreProcessedText, TextMatch
 from .translators import TRANSLATOR_MAPPING
 from .translators.base import BaseTranslator
 
@@ -289,20 +289,19 @@ def apply_terminating_rules(
     return unhandled_matches, terminated_matches
 
 
-def _apply_translation_rules(unique_texts: Dict[str, List[TextMatch]], task: TranslationTask) -> Tuple[Dict[str, List[TextMatch]], Dict[str, Dict[str, str]]]:
-    texts_to_translate_api: Dict[str, List[TextMatch]] = {}
-    protected_maps: Dict[str, Dict[str, str]] = {}
-
+def _apply_translation_rules(unique_texts: Dict[str, List[TextMatch]], task: TranslationTask) -> List[PreProcessedText]:
+    pre_processed_texts: List[PreProcessedText] = []
     for original_text, matches in unique_texts.items():
         text_to_process, protected_map = _apply_pre_processing_rules(original_text, matches, task)
-        if text_to_process in texts_to_translate_api:
-            texts_to_translate_api[text_to_process].extend(matches)
-        else:
-            texts_to_translate_api[text_to_process] = matches
-        if protected_map:
-            protected_maps[text_to_process] = protected_map
-
-    return texts_to_translate_api, protected_maps
+        pre_processed_texts.append(
+            PreProcessedText(
+                original_text=original_text,
+                text_to_process=text_to_process,
+                protected_map=protected_map,
+                matches=matches,
+            )
+        )
+    return pre_processed_texts
 
 
 def _log_oversized_batch_warning(
@@ -314,10 +313,7 @@ def _log_oversized_batch_warning(
     """Checks and logs a warning if a single-item batch exceeds the TPM limit."""
     single_item_tokens = translator.count_tokens(batch, prompts)
     if single_item_tokens > tpm:
-        logger.warning(
-            f"A single text item ({single_item_tokens} tokens) exceeds the TPM limit ({tpm}). "
-            "It will be sent in an oversized batch. This may cause API errors."
-        )
+        logger.warning(f"A single text item ({single_item_tokens} tokens) exceeds the TPM limit ({tpm}). It will be sent in an oversized batch. This may cause API errors.")
 
 
 def _create_simple_batches(texts_to_translate: List[str], batch_size: int) -> List[List[str]]:
@@ -429,14 +425,19 @@ def _restore_protected_text(translated_text: str, protected_map: Dict[str, str])
 def _update_matches_on_success(
     batch: List[str],
     translated_results: list,
-    texts_to_translate_api: Dict[str, List[TextMatch]],
+    item_map: Dict[str, PreProcessedText],
     provider_name: str,
-    protected_maps: Dict[str, Dict[str, str]],
 ):
-    for original_text, result in zip(batch, translated_results):
-        protected_map = protected_maps.get(original_text, {})
-        restored_text = _restore_protected_text(result.translated_text, protected_map)
-        for match in texts_to_translate_api[original_text]:
+    for text_to_process, result in zip(batch, translated_results):
+        processed_item = item_map.get(text_to_process)
+        if not processed_item:
+            continue
+
+        # Use the item's own protected_map
+        restored_text = _restore_protected_text(result.translated_text, processed_item.protected_map)
+
+        # Update all associated matches
+        for match in processed_item.matches:
             match.translated_text = restored_text
             match.provider = provider_name
             if result.tokens_used is not None:
@@ -445,11 +446,14 @@ def _update_matches_on_success(
 
 def _update_matches_on_failure(
     batch: List[str],
-    texts_to_translate_api: Dict[str, List[TextMatch]],
+    item_map: Dict[str, PreProcessedText],
     provider_name: str,
 ):
-    for original_text in batch:
-        for match in texts_to_translate_api[original_text]:
+    for text_to_process in batch:
+        processed_item = item_map.get(text_to_process)
+        if not processed_item:
+            continue
+        for match in processed_item.matches:
             match.provider = f"error_{provider_name}"
 
 
@@ -458,7 +462,7 @@ def _handle_rpd_limit(
     rpd: Optional[int],
     batches: List[List[str]],
     current_batch_index: int,
-    texts_to_translate_api: Dict[str, List[TextMatch]],
+    item_map: Dict[str, PreProcessedText],
 ) -> bool:
     """
     Checks if the Requests Per Day (RPD) limit has been reached.
@@ -478,12 +482,9 @@ def _handle_rpd_limit(
     """
     global _rpd_session_counts
     if rpd and _rpd_session_counts[provider_name] >= rpd:
-        logger.warning(
-            f"Request Per Day limit ({rpd}) for '{provider_name}' reached. "
-            f"Skipping remaining {len(batches) - current_batch_index} batches."
-        )
+        logger.warning(f"Request Per Day limit ({rpd}) for '{provider_name}' reached. Skipping remaining {len(batches) - current_batch_index} batches.")
         for remaining_batch in batches[current_batch_index:]:
-            _update_matches_on_failure(remaining_batch, texts_to_translate_api, "error_rpd_limit")
+            _update_matches_on_failure(remaining_batch, item_map, "error_rpd_limit")
         return True
     return False
 
@@ -491,11 +492,10 @@ def _handle_rpd_limit(
 def _translate_and_update_matches(
     translator: BaseTranslator,
     batches: List[List[str]],
-    texts_to_translate_api: Dict[str, List[TextMatch]],
+    pre_processed_items: List[PreProcessedText],
     task: TranslationTask,
     config: GlocalConfig,
     provider_name: str,
-    protected_maps: Dict[str, Dict[str, str]],
     rpm: Optional[int],
     rpd: Optional[int],
 ):
@@ -503,11 +503,13 @@ def _translate_and_update_matches(
     global _rpd_session_counts
     delay = 60 / rpm if rpm and rpm > 0 else 0
 
+    item_map = {item.text_to_process: item for item in pre_processed_items}
+
     for i, batch in enumerate(batches):
         if not batch:
             continue
 
-        if _handle_rpd_limit(provider_name, rpd, batches, i, texts_to_translate_api):
+        if _handle_rpd_limit(provider_name, rpd, batches, i, item_map):
             break
 
         logger.info(f"Translating batch {i + 1}/{len(batches)} ({len(batch)} unique texts) using '{provider_name}'.")
@@ -520,12 +522,11 @@ def _translate_and_update_matches(
             _update_matches_on_success(
                 batch,
                 translated_results,
-                texts_to_translate_api,
+                item_map,
                 provider_name,
-                protected_maps,
             )
         else:
-            _update_matches_on_failure(batch, texts_to_translate_api, provider_name)
+            _update_matches_on_failure(batch, item_map, provider_name)
 
         if i < len(batches) - 1 and delay > 0:
             logger.info(f"RPM delay: sleeping for {delay:.2f} seconds.")
@@ -543,10 +544,14 @@ def process_matches(
     for match in matches:
         unique_texts[match.original_text].append(match)
     logger.info(f"Found {len(unique_texts)} unique text strings to process for API translation.")
-    texts_to_translate_api, protected_maps = _apply_translation_rules(unique_texts, task)
+
+    pre_processed_items = _apply_translation_rules(unique_texts, task)
+    texts_to_translate_api = {item.text_to_process for item in pre_processed_items if item.text_to_process}
+
     if not texts_to_translate_api:
         logger.info("All texts were handled by pre-processing or were empty. No API call needed.")
         return
+
     provider_name = _select_provider(task, list(TRANSLATOR_MAPPING.keys()))
     logger.info(f"Selected translator for task '{task.name}': '{provider_name}' (Task-specific: {task.translator or 'Not set'}).")
     translator = get_translator(provider_name, config)
@@ -558,7 +563,9 @@ def process_matches(
         translator = get_translator(provider_name, config)
         if not translator:
             logger.error("CRITICAL: Fallback provider 'google' also failed to initialize. Aborting translation.")
-            _update_matches_on_failure(list(texts_to_translate_api.keys()), texts_to_translate_api, "initialization_error")
+            # Create a temporary item_map for failure reporting
+            item_map = {item.text_to_process: item for item in pre_processed_items}
+            _update_matches_on_failure(list(texts_to_translate_api), item_map, "initialization_error")
             return
 
     provider_settings = getattr(config.providers, provider_name, ProviderSettings())
@@ -570,12 +577,12 @@ def process_matches(
     # If key rate limits are not set, fall back to a single, un-throttled batch.
     if rpm is None or tpm is None:
         logger.info(f"Provider '{provider_name}' is not configured for intelligent scheduling (RPM/TPM). Sending as a single batch.")
-        batches = [list(texts_to_translate_api.keys())]
+        batches = [list(texts_to_translate_api)]
     else:
         logger.info(f"Provider '{provider_name}' configured for intelligent scheduling: RPM={rpm}, TPM={tpm}, RPD={rpd or 'N/A'}.")
         batches = _create_batches(
             translator=translator,
-            texts_to_translate=list(texts_to_translate_api.keys()),
+            texts_to_translate=list(texts_to_translate_api),
             batch_size=batch_size,
             tpm=tpm,
             prompts=task.prompts,
@@ -584,11 +591,10 @@ def process_matches(
     _translate_and_update_matches(
         translator,
         batches,
-        texts_to_translate_api,
+        pre_processed_items,
         task,
         config,
         provider_name,
-        protected_maps,
         rpm=rpm,
         rpd=rpd,
     )

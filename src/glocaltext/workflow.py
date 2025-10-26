@@ -8,9 +8,8 @@ from typing import Any, Callable, Dict, Iterable, List, Tuple
 
 import regex
 import yaml
-from google.generativeai.generative_models import GenerativeModel
 
-from .config import GlocalConfig, ProviderSettings, TranslationTask
+from .config import GlocalConfig, TranslationTask
 from .models import TextMatch
 from .translate import apply_terminating_rules, process_matches
 
@@ -91,30 +90,6 @@ def update_cache(cache_path: Path, task_name: str, matches_to_cache: List[TextMa
         logging.error(f"Could not write to cache file at {cache_path}: {e}")
 
 
-def create_token_based_batches(matches: List[TextMatch], model: GenerativeModel, provider_settings: ProviderSettings) -> List[List[TextMatch]]:
-    batch_options = provider_settings.batch_options
-    batch_size = provider_settings.batch_size
-
-    if not batch_options.enabled or not batch_size or batch_size <= 0:
-        return [matches] if matches else []
-
-    batches: List[List[TextMatch]] = []
-    current_batch: List[TextMatch] = []
-    current_batch_tokens = 0
-    for match in matches:
-        match_tokens = model.count_tokens(match.original_text).total_tokens
-        if current_batch and ((current_batch_tokens + match_tokens > batch_options.max_tokens_per_batch) or (len(current_batch) >= batch_size)):
-            batches.append(current_batch)
-            current_batch = []
-            current_batch_tokens = 0
-        current_batch.append(match)
-        current_batch_tokens += match_tokens
-    if current_batch:
-        batches.append(current_batch)
-    logging.info(f"Created {len(batches)} batches based on token limits.")
-    return batches
-
-
 def _find_files(task: TranslationTask) -> Iterable[Path]:
     base_path = Path.cwd()
     included_files = set()
@@ -143,7 +118,7 @@ def _extract_matches_from_content(content: str, file_path: Path, task: Translati
     matches = []
     for rule_pattern in task.extraction_rules:
         try:
-            for match in regex.finditer(rule_pattern, content, regex.MULTILINE):
+            for match in regex.finditer(rule_pattern, content, regex.MULTILINE, overlapped=True):
                 if match.groups():
                     matches.append(
                         TextMatch(
@@ -151,6 +126,7 @@ def _extract_matches_from_content(content: str, file_path: Path, task: Translati
                             source_file=file_path,
                             span=match.span(1),
                             task_name=task.name,
+                            extraction_rule=rule_pattern,
                         )
                     )
         except regex.error as e:
@@ -236,18 +212,20 @@ def _is_overlapping(span1: Tuple[int, int], span2: Tuple[int, int]) -> bool:
 
 def _deduplicate_matches(matches: List[TextMatch]) -> List[TextMatch]:
     """
-    De-duplicates a list of matches, keeping the first occurrence of each unique text.
+    De-duplicates a list of matches, keeping only one match for each unique (text, span) combination.
 
-    Why: This function simplifies the list of matches to ensure that the same text
-    is not processed or translated multiple times. It prioritizes the first match
-    found in the original list.
+    Why: This function prevents redundant processing of the exact same text captured
+    at the exact same location, which can happen if multiple extraction rules overlap
+    perfectly. It ensures that translations are applied correctly to all unique
+    occurrences of a text, even if the text content itself is repeated.
     """
-    seen_texts = set()
+    seen_signatures = set()
     deduplicated_matches: List[TextMatch] = []
     for match in matches:
-        if match.original_text not in seen_texts:
+        signature = (match.original_text, match.span)
+        if signature not in seen_signatures:
             deduplicated_matches.append(match)
-            seen_texts.add(match.original_text)
+            seen_signatures.add(signature)
     return deduplicated_matches
 
 
@@ -264,14 +242,11 @@ def _group_matches_by_file(matches: List[TextMatch]) -> Dict[Path, List[TextMatc
         if match.translated_text is not None:
             grouped_by_file.setdefault(match.source_file, []).append(match)
 
-    # 2. De-duplicate matches within each file group
-    deduplicated_matches_by_file: Dict[Path, List[TextMatch]] = {}
-    for file_path, file_matches in grouped_by_file.items():
-        final_matches = _deduplicate_matches(file_matches)
-        if final_matches:
-            deduplicated_matches_by_file[file_path] = final_matches
-
-    return deduplicated_matches_by_file
+    # 2. Return the groups directly without de-duplication.
+    # Why: At the write-back stage, we need to apply translations to ALL occurrences,
+    # including duplicates. De-duplicating here was the root cause of the bug
+    # where only one of several identical texts was being translated.
+    return grouped_by_file
 
 
 def _apply_translations_to_content(content: str, matches: List[TextMatch]) -> str:
@@ -453,14 +428,28 @@ def _phase_3_check_cache(remaining_matches: List[TextMatch], files_to_process: L
 
     matches_to_translate: List[TextMatch] = []
     cached_matches: List[TextMatch] = []
+    # Create a map of checksums for all remaining matches
+    # to avoid re-calculating checksums repeatedly.
+    checksum_map = {m.match_id: calculate_checksum(m.original_text) for m in remaining_matches}
+
+    # First, apply all cached translations to any matching text.
+    # This is the crucial step: we iterate through all matches and apply
+    # the cache, instead of just partitioning the list.
     for match in remaining_matches:
-        checksum = calculate_checksum(match.original_text)
+        checksum = checksum_map[match.match_id]
         if checksum in cache:
-            match.translated_text = cache[checksum]
-            match.provider = "cached"
+            if not match.translated_text:  # Apply only if not already translated
+                match.translated_text = cache[checksum]
+                match.provider = "cached"
             cached_matches.append(match)
-        else:
-            matches_to_translate.append(match)
+
+    # Now, determine which texts still need to be translated.
+    # A text needs translation if any of its instances lack a translated_text.
+    unique_texts_to_translate = {m.original_text for m in remaining_matches if not m.translated_text and calculate_checksum(m.original_text) not in cache}
+
+    # Collect all match objects that correspond to the unique texts needing translation.
+    for text in unique_texts_to_translate:
+        matches_to_translate.extend([m for m in remaining_matches if m.original_text == text and not m.translated_text])
 
     logging.info(f"Found {len(cached_matches)} cached translations.")
     logging.info(f"{len(matches_to_translate)} texts require new translation.")

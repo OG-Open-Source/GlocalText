@@ -82,7 +82,7 @@ class GeminiTranslator(BaseTranslator):
         try:
             # Configure the Gemini client with the API key from settings
             self.client = genai.Client(api_key=self.settings.api_key)
-            self.model_name = self.settings.model or "gemini-1.0-pro"
+            self.client_name = self.settings.model or "gemini-1.0-pro"
 
             # Dynamically create a decorated method for translation attempts
             retry_decorator = self._create_retry_decorator(self.settings)
@@ -191,13 +191,13 @@ class GeminiTranslator(BaseTranslator):
         """
         prompt_tokens = self._count_api_tokens(prompt)
         if debug:
-            logging.info(f"[DEBUG] Gemini Request:\n- Model: {self.model_name}\n- Prompt Tokens: {prompt_tokens}\n- Prompt Body (first 200 chars): {prompt[:200]}...")
+            logging.info(f"[DEBUG] Gemini Request:\n- Model: {self.client_name}\n- Prompt Tokens: {prompt_tokens}\n- Prompt Body (first 200 chars): {prompt[:200]}...")
 
         start_time = time.time()
         config = types.GenerateContentConfig(response_mime_type="application/json", system_instruction=system_instruction)
         response = self.client.models.generate_content(
-            model=self.model_name,
-            contents=[prompt],
+            model=self.client_name,
+            contents=[prompt],  # type: ignore[arg-type]
             config=config,
         )
         duration = time.time() - start_time
@@ -269,7 +269,7 @@ class GeminiTranslator(BaseTranslator):
         if not content:
             return 0
         try:
-            response = self.client.models.count_tokens(model=self.model_name, contents=[content])
+            response = self.client.models.count_tokens(model=self.client_name, contents=[content])  # type: ignore[arg-type]
             return response.total_tokens or 0
         except Exception as e:
             logging.warning(f"Token counting failed: {e}. Returning 0.")

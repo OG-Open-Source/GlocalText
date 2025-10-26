@@ -1,6 +1,7 @@
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Dict, List
 
 
 @dataclass
@@ -13,6 +14,7 @@ class TextMatch:
         span: A tuple (start, end) indicating the character position of the text in the source file.
         match_id: A unique identifier for this specific match instance.
         task_name: The name of the task this match belongs to.
+        extraction_rule: The rule used to extract this match.
         translated_text: The translated text. None if not yet translated.
         provider: The translation provider used (e.g., 'gemini', 'google', 'manual').
         tokens_used: The number of tokens consumed for the translation by an AI provider.
@@ -23,6 +25,7 @@ class TextMatch:
     source_file: Path
     span: tuple[int, int]
     task_name: str
+    extraction_rule: str
     translated_text: str | None = None
     provider: str | None = None
     tokens_used: int | None = None
@@ -46,12 +49,23 @@ class TextMatch:
             "match_id": self.match_id,
             "original_text": self.original_text,
             "task_name": self.task_name,
+            "extraction_rule": self.extraction_rule,
             "translated_text": self.translated_text,
             "source_file": str(self.source_file),
             "span": self.span,
             "provider": self.provider,
             "tokens_used": self.tokens_used,
         }
+
+
+@dataclass
+class PreProcessedText:
+    """Represents a unique original text and its pre-processing results."""
+
+    original_text: str
+    text_to_process: str
+    protected_map: Dict[str, str]
+    matches: List[TextMatch]
 
 
 @dataclass

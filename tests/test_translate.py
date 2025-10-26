@@ -119,8 +119,8 @@ class TestProcessMatches(unittest.TestCase):
         self.mock_translator.count_tokens.side_effect = mock_count_tokens
 
         matches = [
-            TextMatch(original_text="heavy text", source_file=Path("dummy.txt"), span=(0, 10), task_name="test"),
-            TextMatch(original_text="light text", source_file=Path("dummy.txt"), span=(11, 21), task_name="test"),
+            TextMatch(original_text="heavy text", source_file=Path("dummy.txt"), span=(0, 10), task_name="test", extraction_rule="test_rule"),
+            TextMatch(original_text="light text", source_file=Path("dummy.txt"), span=(11, 21), task_name="test", extraction_rule="test_rule"),
         ]
 
         # Act
@@ -149,8 +149,8 @@ class TestProcessMatches(unittest.TestCase):
         self.mock_translator.count_tokens.return_value = 50
 
         matches = [
-            TextMatch(original_text="text 1", source_file=Path("dummy.txt"), span=(0, 6), task_name="test"),
-            TextMatch(original_text="text 2", source_file=Path("dummy.txt"), span=(7, 13), task_name="test"),
+            TextMatch(original_text="text 1", source_file=Path("dummy.txt"), span=(0, 6), task_name="test", extraction_rule="test_rule"),
+            TextMatch(original_text="text 2", source_file=Path("dummy.txt"), span=(7, 13), task_name="test", extraction_rule="test_rule"),
         ]
 
         # Act & Assert
@@ -179,8 +179,8 @@ class TestProcessMatches(unittest.TestCase):
             TranslationResult(translated_text="Monde", tokens_used=10),
         ]
         matches = [
-            TextMatch(original_text="Hello", source_file=Path("dummy.txt"), span=(0, 5), task_name="test"),
-            TextMatch(original_text="World", source_file=Path("dummy.txt"), span=(6, 11), task_name="test"),
+            TextMatch(original_text="Hello", source_file=Path("dummy.txt"), span=(0, 5), task_name="test", extraction_rule="test_rule"),
+            TextMatch(original_text="World", source_file=Path("dummy.txt"), span=(6, 11), task_name="test", extraction_rule="test_rule"),
         ]
 
         # Act & Assert

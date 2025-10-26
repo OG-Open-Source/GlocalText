@@ -25,6 +25,7 @@ def _calculate_metrics(all_matches: List[TextMatch]) -> Dict:
     translations_applied = sum(1 for m in all_matches if m.translated_text is not None and m.translated_text != m.original_text)
 
     provider_breakdown: Dict[str, Dict[str, int]] = {}
+    extraction_rule_breakdown: Dict[str, int] = {}
     total_tokens = 0
     for match in all_matches:
         provider = match.provider or "unknown"
@@ -32,6 +33,8 @@ def _calculate_metrics(all_matches: List[TextMatch]) -> Dict:
         provider_breakdown[provider]["count"] += 1
         total_tokens += match.tokens_used or 0
         provider_breakdown[provider]["tokens"] += match.tokens_used or 0
+        if hasattr(match, "extraction_rule") and match.extraction_rule:
+            extraction_rule_breakdown[match.extraction_rule] = extraction_rule_breakdown.get(match.extraction_rule, 0) + 1
 
     return {
         "total_matches": total_matches,
@@ -39,6 +42,7 @@ def _calculate_metrics(all_matches: List[TextMatch]) -> Dict:
         "processed_files": len(processed_files),
         "translations_applied": translations_applied,
         "provider_breakdown": provider_breakdown,
+        "extraction_rule_breakdown": extraction_rule_breakdown,
         "total_tokens": total_tokens,
     }
 
@@ -67,6 +71,13 @@ def _log_summary_to_console(metrics: Dict, total_run_time: float):
 
     if metrics["total_tokens"] > 0:
         logging.info(f"- Total Tokens Consumed: {metrics['total_tokens']}")
+
+    if metrics.get("extraction_rule_breakdown"):
+        logging.info("\n--- Extraction Rule Breakdown ---")
+        # Sort for consistent output
+        sorted_rules = sorted(metrics["extraction_rule_breakdown"].items(), key=lambda item: item[1], reverse=True)
+        for rule, count in sorted_rules:
+            logging.info(f"- {count} matches from rule: '{rule}'")
 
 
 def _get_report_filepath(start_time: float, end_time: float, export_dir: Path) -> Path:
@@ -110,6 +121,7 @@ def _export_summary_to_csv(all_matches: List[TextMatch], config: GlocalConfig, f
                     "translated_text",
                     "provider",
                     "tokens_used",
+                    "extraction_rule",
                 ]
             )
             task_lookup = {t.name: t for t in config.tasks}
@@ -124,6 +136,7 @@ def _export_summary_to_csv(all_matches: List[TextMatch], config: GlocalConfig, f
                         match.translated_text,
                         match.provider,
                         match.tokens_used or 0,
+                        getattr(match, "extraction_rule", "N/A"),
                     ]
                 )
         logging.info("\n--- Report ---")
