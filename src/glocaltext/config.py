@@ -1,6 +1,8 @@
+"""Handles the parsing and validation of the GlocalText configuration file."""
+
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Literal
 
 import yaml
 
@@ -11,7 +13,7 @@ class ReportOptions:
 
     enabled: bool = True
     export_csv: bool = False
-    export_dir: Optional[str] = None
+    export_dir: str | None = None
 
 
 @dataclass
@@ -19,7 +21,7 @@ class DebugOptions:
     """Options for debugging the translation process."""
 
     enabled: bool = False
-    log_path: Optional[str] = None
+    log_path: str | None = None
 
 
 @dataclass
@@ -35,23 +37,24 @@ class ProviderSettings:
     """Settings for a specific translation provider."""
 
     api_key: str | None = None
-    model: Optional[str] = "gemini-flash-lite-latest"
+    model: str | None = "gemini-flash-lite-latest"
     batch_options: BatchOptions = field(default_factory=BatchOptions)
-    batch_size: Optional[int] = 20
-    rpm: Optional[int] = None
-    tpm: Optional[int] = None
-    rpd: Optional[int] = None
-    retry_attempts: Optional[int] = 3
-    retry_delay: Optional[float] = 1.0
-    retry_backoff_factor: Optional[float] = 2.0
+    batch_size: int | None = 20
+    rpm: int | None = None
+    tpm: int | None = None
+    rpd: int | None = None
+    retry_attempts: int | None = 3
+    retry_delay: float | None = 1.0
+    retry_backoff_factor: float | None = 2.0
+    extra: dict[str, Any] | None = None
 
 
 @dataclass
 class Providers:
     """Container for provider-specific settings."""
 
-    gemini: Optional[ProviderSettings] = None
-    mock: Optional[ProviderSettings] = None
+    gemini: ProviderSettings | None = None
+    mock: ProviderSettings | None = None
 
 
 @dataclass
@@ -60,44 +63,47 @@ class Output:
 
     in_place: bool = True
     path: str | None = None
-    filename_suffix: Optional[str] = None
-    filename: Optional[str] = None
+    filename_suffix: str | None = None
+    filename: str | None = None
     # The 'filename_prefix' is included for backward compatibility with older configs.
     # It will be handled and converted to 'filename_suffix' in __post_init__.
-    filename_prefix: Optional[str] = None
+    filename_prefix: str | None = None
 
-    def __post_init__(self):
-        """Handles backward compatibility and validates attributes."""
+    def __post_init__(self) -> None:
+        """Handle backward compatibility and validate attributes."""
         # If 'filename_prefix' is provided, use it to populate 'filename_suffix'
         # to maintain backward compatibility.
-        if self.filename_prefix is not None:
-            if self.filename_suffix is None:
-                self.filename_suffix = self.filename_prefix
+        if self.filename_prefix is not None and self.filename_suffix is None:
+            self.filename_suffix = self.filename_prefix
 
         # Original validation logic
         if self.in_place and self.path is not None:
-            raise ValueError("The 'path' attribute cannot be used when 'in_place' is True.")
+            msg = "The 'path' attribute cannot be used when 'in_place' is True."
+            raise ValueError(msg)
         if not self.in_place and self.path is None:
-            raise ValueError("The 'path' attribute is required when 'in_place' is False.")
+            msg = "The 'path' attribute is required when 'in_place' is False."
+            raise ValueError(msg)
 
 
 @dataclass
 class MatchRule:
     """Defines the matching criteria for a rule."""
 
-    exact: Optional[Union[str, List[str]]] = None
-    contains: Optional[Union[str, List[str]]] = None
-    regex: Optional[Union[str, List[str]]] = None
+    exact: str | list[str] | None = None
+    contains: str | list[str] | None = None
+    regex: str | list[str] | None = None
 
-    def __post_init__(self):
-        """Validates that exactly one of 'exact', 'contains', or 'regex' is provided."""
+    def __post_init__(self) -> None:
+        """Validate that exactly one of 'exact', 'contains', or 'regex' is provided."""
         provided_rules = [self.exact, self.contains, self.regex]
         num_provided = sum(1 for rule in provided_rules if rule is not None)
 
         if num_provided == 0:
-            raise ValueError("One of 'exact', 'contains', or 'regex' must be provided for a match rule.")
+            msg = "One of 'exact', 'contains', or 'regex' must be provided for a match rule."
+            raise ValueError(msg)
         if num_provided > 1:
-            raise ValueError("'exact', 'contains', and 'regex' cannot be used simultaneously in a match rule.")
+            msg = "'exact', 'contains', and 'regex' cannot be used simultaneously in a match rule."
+            raise ValueError(msg)
 
 
 @dataclass
@@ -105,10 +111,10 @@ class ActionRule:
     """Defines the action to be taken when a rule matches."""
 
     action: Literal["skip", "replace", "modify", "protect"]
-    value: Optional[str] = None
+    value: str | None = None
 
-    def __init__(self, **kwargs):
-        """Initializes the ActionRule with backward compatibility for 'type'."""
+    def __init__(self, **kwargs: Any) -> None:  # noqa: ANN401
+        """Initialize the ActionRule with backward compatibility for 'type'."""
         # Provide backward compatibility for configs using 'type' instead of 'action'.
         if "type" in kwargs:
             kwargs["action"] = kwargs.pop("type")
@@ -117,15 +123,18 @@ class ActionRule:
         for key, value in kwargs.items():
             setattr(self, key, value)
 
-    def __post_init__(self):
-        """Validates that 'value' is provided for actions that require it."""
+    def __post_init__(self) -> None:
+        """Validate that 'value' is provided for actions that require it."""
         if self.action in ["replace", "modify"] and self.value is None:
-            raise ValueError(f"The 'value' must be provided for the '{self.action}' action.")
+            msg = f"The 'value' must be provided for the '{self.action}' action."
+            raise ValueError(msg)
 
 
 @dataclass
 class Rule:
-    """A single rule combining a match condition and an action.
+    """
+    A single rule combining a match condition and an action.
+
     This class is designed to be constructed from a dictionary,
     so the from_dict method in GlocalConfig will handle the nested instantiation.
     """
@@ -133,7 +142,8 @@ class Rule:
     match: MatchRule
     action: ActionRule
 
-    def __init__(self, match: Dict[str, Any], action: Dict[str, Any]):
+    def __init__(self, match: dict[str, Any], action: dict[str, Any]) -> None:
+        """Initialize the Rule with nested MatchRule and ActionRule."""
         self.match = MatchRule(**match)
         self.action = ActionRule(**action)
 
@@ -142,7 +152,7 @@ class Rule:
 class Source:
     """Defines the source files for a translation task."""
 
-    include: List[str] = field(default_factory=list)
+    include: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -153,17 +163,17 @@ class TranslationTask:
     source_lang: str
     target_lang: str
     source: Source
-    extraction_rules: List[str]
-    translator: Optional[str] = None
-    model: Optional[str] = None
-    prompts: Dict[str, str] = field(default_factory=dict)
+    extraction_rules: list[str]
+    translator: str | None = None
+    model: str | None = None
+    prompts: dict[str, str] = field(default_factory=dict)
     enabled: bool = True
-    exclude: List[str] = field(default_factory=list)
+    exclude: list[str] = field(default_factory=list)
     output: Output = field(default_factory=Output)
-    rules: List[Rule] = field(default_factory=list)
-    regex_rewrites: Dict[str, str] = field(default_factory=dict)
+    rules: list[Rule] = field(default_factory=list)
+    regex_rewrites: dict[str, str] = field(default_factory=dict)
     incremental: bool = False
-    cache_path: Optional[str] = None
+    cache_path: str | None = None
 
 
 @dataclass
@@ -171,13 +181,13 @@ class GlocalConfig:
     """The root configuration for GlocalText."""
 
     providers: Providers = field(default_factory=Providers)
-    tasks: List[TranslationTask] = field(default_factory=list)
+    tasks: list[TranslationTask] = field(default_factory=list)
     debug_options: DebugOptions = field(default_factory=DebugOptions)
     report_options: ReportOptions = field(default_factory=ReportOptions)
 
     @staticmethod
-    def _handle_manual_translations(task_data: Dict[str, Any]) -> List[Rule]:
-        """Handles backward compatibility for 'manual_translations' and 'glossary'."""
+    def _handle_manual_translations(task_data: dict[str, Any]) -> list[Rule]:
+        """Handle backward compatibility for 'manual_translations' and 'glossary'."""
         rules = []
         manual_translations = task_data.get("manual_translations", task_data.get("glossary", {}))
         for source, target in manual_translations.items():
@@ -185,8 +195,8 @@ class GlocalConfig:
         return rules
 
     @staticmethod
-    def _handle_keyword_replacements(task_data: Dict[str, Any]) -> List[Rule]:
-        """Handles backward compatibility for 'keyword_replacements'."""
+    def _handle_keyword_replacements(task_data: dict[str, Any]) -> list[Rule]:
+        """Handle backward compatibility for 'keyword_replacements'."""
         rules = []
         keyword_replacements = task_data.get("keyword_replacements", {})
         for keyword, replacement in keyword_replacements.items():
@@ -194,19 +204,16 @@ class GlocalConfig:
         return rules
 
     @staticmethod
-    def _handle_skip_translations(task_data: Dict[str, Any], global_skip_translations: List[str]) -> List[Rule]:
-        """Handles backward compatibility for 'skip_translations'."""
-        rules = []
+    def _handle_skip_translations(task_data: dict[str, Any], global_skip_translations: list[str]) -> list[Rule]:
+        """Handle backward compatibility for 'skip_translations'."""
         task_skip = task_data.get("skip_translations", [])
         all_skips = set(global_skip_translations) | set(task_skip)
-        for text in all_skips:
-            rules.append(Rule(match={"exact": text}, action={"action": "skip"}))
-        return rules
+        return [Rule(match={"exact": text}, action={"action": "skip"}) for text in all_skips]
 
     @staticmethod
-    def _apply_backward_compatibility_rules(task_data: Dict[str, Any], global_skip_translations: List[str]) -> List[Rule]:
+    def _apply_backward_compatibility_rules(task_data: dict[str, Any], global_skip_translations: list[str]) -> list[Rule]:
         """
-        Builds a list of rules from various legacy configuration fields.
+        Build a list of rules from various legacy configuration fields.
 
         This is to ensure backward compatibility with older configuration formats that defined
         rules like glossaries, keyword replacements, and skip lists outside the main 'rules' list.
@@ -230,9 +237,9 @@ class GlocalConfig:
         return rules
 
     @staticmethod
-    def _prepare_source_data(task_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _prepare_source_data(task_data: dict[str, Any]) -> dict[str, Any]:
         """
-        Prepares the source configuration, handling backward compatibility for the 'targets' key.
+        Prepare the source configuration, handling backward compatibility for the 'targets' key.
 
         In older versions, source files were defined under 'targets'. This function ensures
         they are correctly moved to 'source.include' for the new data model.
@@ -245,9 +252,9 @@ class GlocalConfig:
         return source_data
 
     @staticmethod
-    def _build_tasks_from_list(tasks_data: List[Dict[str, Any]], global_skip_translations: List[str]) -> List[TranslationTask]:
+    def _build_tasks_from_list(tasks_data: list[dict[str, Any]], global_skip_translations: list[str]) -> list[TranslationTask]:
         """
-        Builds a list of TranslationTask objects from a list of dictionaries.
+        Build a list of TranslationTask objects from a list of dictionaries.
 
         This function orchestrates the parsing of each task definition, delegating
         backward compatibility handling and data preparation to helper methods.
@@ -279,45 +286,57 @@ class GlocalConfig:
                     regex_rewrites=t.get("regex_rewrites", {}),
                     incremental=t.get("incremental", False),
                     cache_path=t.get("cache_path"),
-                )
+                ),
             )
         return tasks
 
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "GlocalConfig":
-        """Creates a GlocalConfig object from a dictionary, with validation."""
-        providers_data = data.get("providers", {}) or {}
+    @staticmethod
+    def _build_providers_from_dict(providers_data: dict[str, Any]) -> Providers:
+        """Build a Providers object from a dictionary."""
 
-        def _parse_provider_settings(name: str) -> Optional[ProviderSettings]:
+        def _parse_provider_settings(name: str) -> ProviderSettings | None:
             if name not in providers_data:
                 return None
 
             p_config = providers_data[name]
             if not isinstance(p_config, dict):
-                # Handles case like `mock:` which parses to `None`
                 p_config = {}
 
             if "batch_options" in p_config:
                 batch_opts_data = p_config.pop("batch_options", {})
                 if "batch_size" in batch_opts_data:
-                    # Move batch_size to the parent p_config if not already there,
-                    # for backward compatibility.
                     p_config.setdefault("batch_size", batch_opts_data.pop("batch_size"))
                 p_config["batch_options"] = BatchOptions(**batch_opts_data)
 
             return ProviderSettings(**p_config)
 
-        providers = Providers(
+        return Providers(
             gemini=_parse_provider_settings("gemini"),
             mock=_parse_provider_settings("mock"),
         )
 
+    @staticmethod
+    def _parse_system_settings(data: dict[str, Any]) -> tuple[DebugOptions, ReportOptions]:
+        """Parse system-wide settings like debug and report options."""
+        debug_options = DebugOptions(**data.get("debug_options", {}))
+        report_options = ReportOptions(**data.get("report_options", {}))
+        return debug_options, report_options
+
+    @classmethod
+    def _parse_providers_settings(cls, data: dict[str, Any]) -> Providers:
+        """Parse provider settings from the main config dictionary."""
+        providers_data = data.get("providers", {}) or {}
+        return cls._build_providers_from_dict(providers_data)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "GlocalConfig":
+        """Create a GlocalConfig object from a dictionary, with validation."""
+        providers = cls._parse_providers_settings(data)
+        debug_options, report_options = cls._parse_system_settings(data)
+
         tasks_data = data.get("tasks", [])
         global_skip_translations = data.get("skip_translations", [])
         tasks = cls._build_tasks_from_list(tasks_data, global_skip_translations)
-
-        debug_options = DebugOptions(**data.get("debug_options", {}))
-        report_options = ReportOptions(**data.get("report_options", {}))
 
         return cls(
             providers=providers,
@@ -328,7 +347,8 @@ class GlocalConfig:
 
 
 def load_config(config_path: str) -> GlocalConfig:
-    """Loads, parses, and validates the YAML configuration file.
+    """
+    Load, parse, and validate the YAML configuration file.
 
     Args:
         config_path: The path to the config.yaml file.
@@ -344,18 +364,25 @@ def load_config(config_path: str) -> GlocalConfig:
     """
     path = Path(config_path)
     if not path.is_file():
-        raise FileNotFoundError(f"Configuration file not found at: {config_path}")
+        msg = f"Configuration file not found at: {config_path}"
+        raise FileNotFoundError(msg)
+
+    def _raise_type_error(msg: str) -> None:
+        """Raise a TypeError with a specific message."""
+        raise TypeError(msg)
 
     try:
-        with open(path, encoding="utf-8") as f:
+        with path.open(encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
         if not isinstance(data, dict):
-            raise TypeError("Config file must be a YAML mapping (dictionary).")
+            _raise_type_error("Config file must be a YAML mapping (dictionary).")
 
         return GlocalConfig.from_dict(data)
 
     except yaml.YAMLError as e:
-        raise yaml.YAMLError(f"Error parsing YAML config file: {e}")
+        msg = f"Error parsing YAML config file: {e}"
+        raise yaml.YAMLError(msg) from e
     except (KeyError, TypeError, ValueError) as e:
-        raise ValueError(f"Invalid or missing configuration: {e}")
+        msg = f"Invalid or missing configuration: {e}"
+        raise ValueError(msg) from e

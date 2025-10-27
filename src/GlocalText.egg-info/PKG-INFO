@@ -7,11 +7,12 @@ Project-URL: Homepage, https://github.com/OG-Open-Source/GlocalText
 Project-URL: Repository, https://github.com/OG-Open-Source/GlocalText
 Classifier: Programming Language :: Python :: 3
 Classifier: Operating System :: OS Independent
-Requires-Python: >=3.8
+Requires-Python: >=3.10
 License-File: LICENSE
 Requires-Dist: deep-translator
 Requires-Dist: google-genai
 Requires-Dist: PyYAML
 Requires-Dist: regex
+Requires-Dist: pydantic
 Requires-Dist: tenacity~=8.2.3
 Dynamic: license-file

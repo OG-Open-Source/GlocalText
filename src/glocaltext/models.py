@@ -1,12 +1,15 @@
+"""Defines the data models used throughout GlocalText."""
+
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List
+from typing import Any
 
 
 @dataclass
 class TextMatch:
-    """Represents a piece of text extracted from a source file that is a candidate for translation.
+    """
+    Represents a piece of text extracted from a source file that is a candidate for translation.
 
     Attributes:
         original_text: The exact text captured by the extraction rule.
@@ -33,18 +36,20 @@ class TextMatch:
     # even if they have the same text and location (e.g., from different tasks).
     match_id: str = field(default_factory=lambda: str(uuid.uuid4()), init=False, repr=False)
 
-    def __hash__(self):
+    def __hash__(self) -> int:
+        """Return the hash of the match instance."""
         # Hash based on the unique identifier of the match instance.
         return hash(self.match_id)
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
+        """Check equality against another object."""
         # Equality is based on the unique identifier.
         if not isinstance(other, TextMatch):
             return NotImplemented
         return self.match_id == other.match_id
 
-    def to_dict(self):
-        """Converts the dataclass instance to a JSON-serializable dictionary."""
+    def to_dict(self) -> dict[str, Any]:
+        """Convert the dataclass instance to a JSON-serializable dictionary."""
         return {
             "match_id": self.match_id,
             "original_text": self.original_text,
@@ -64,8 +69,8 @@ class PreProcessedText:
 
     original_text: str
     text_to_process: str
-    protected_map: Dict[str, str]
-    matches: List[TextMatch]
+    protected_map: dict[str, str]
+    matches: list[TextMatch]
 
 
 @dataclass

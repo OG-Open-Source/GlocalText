@@ -2,4 +2,5 @@ deep-translator
 google-genai
 PyYAML
 regex
+pydantic
 tenacity~=8.2.3

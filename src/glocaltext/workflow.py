@@ -1,10 +1,12 @@
+"""Manages the overall GlocalText translation workflow."""
+
 import hashlib
 import json
 import logging
 import os
-from glob import glob
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Tuple
+from typing import Any
 
 import regex
 import yaml
@@ -17,23 +19,23 @@ from .translate import apply_terminating_rules, process_matches
 CACHE_FILE_NAME = ".glocaltext_cache.json"
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 
 def calculate_checksum(text: str) -> str:
-    """Calculates the SHA-256 checksum of a given text."""
+    """Calculate the SHA-256 checksum of a given text."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _get_task_cache_path(files: List[Path], task: TranslationTask) -> Path:
-    """Determines the cache path with a new priority order."""
+def _get_task_cache_path(files: list[Path], task: TranslationTask) -> Path:
+    """Determine the cache path with a new priority order."""
     if task.cache_path:
         p = Path(task.cache_path)
         return p / CACHE_FILE_NAME
 
     manual_cache_path_cwd = Path.cwd() / CACHE_FILE_NAME
     if manual_cache_path_cwd.exists():
-        logging.info(f"Found manual cache file at: {manual_cache_path_cwd}")
+        logger.info("Found manual cache file at: %s", manual_cache_path_cwd)
         return manual_cache_path_cwd
 
     if not files:
@@ -51,32 +53,32 @@ def _get_task_cache_path(files: List[Path], task: TranslationTask) -> Path:
     return common_path / CACHE_FILE_NAME
 
 
-def load_cache(cache_path: Path, task_name: str) -> Dict[str, str]:
-    """Safely loads the cache for a specific task from the cache file."""
+def load_cache(cache_path: Path, task_name: str) -> dict[str, str]:
+    """Safely load the cache for a specific task from the cache file."""
     if not cache_path.exists():
         return {}
     try:
-        with open(cache_path, encoding="utf-8") as f:
+        with cache_path.open(encoding="utf-8") as f:
             full_cache = json.load(f)
         return full_cache.get(task_name, {})
     except (OSError, json.JSONDecodeError):
-        logging.warning(f"Could not read or parse cache file at {cache_path}.")
+        logger.warning("Could not read or parse cache file at %s.", cache_path)
         return {}
 
 
-def update_cache(cache_path: Path, task_name: str, matches_to_cache: List[TextMatch]):
-    """Updates the cache file by merging new translations into the existing task cache."""
+def update_cache(cache_path: Path, task_name: str, matches_to_cache: list[TextMatch]) -> None:
+    """Update the cache file by merging new translations into the existing task cache."""
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
-        full_cache: Dict[str, Dict[str, str]] = {}
+        full_cache: dict[str, dict[str, str]] = {}
         if cache_path.exists():
-            with open(cache_path, encoding="utf-8") as f:
+            with cache_path.open(encoding="utf-8") as f:
                 try:
                     content = f.read()
                     if content.strip():
                         full_cache = json.loads(content)
                 except json.JSONDecodeError:
-                    logging.warning(f"Cache file {cache_path} is corrupted. A new one will be created.")
+                    logger.warning("Cache file %s is corrupted. A new one will be created.", cache_path)
 
         task_cache = full_cache.get(task_name, {})
         new_entries = {calculate_checksum(match.original_text): match.translated_text for match in matches_to_cache if match.translated_text is not None}
@@ -84,22 +86,16 @@ def update_cache(cache_path: Path, task_name: str, matches_to_cache: List[TextMa
         if new_entries:
             task_cache.update(new_entries)
             full_cache[task_name] = task_cache
-            with open(cache_path, "w", encoding="utf-8") as f:
+            with cache_path.open("w", encoding="utf-8") as f:
                 json.dump(full_cache, f, ensure_ascii=False, indent=4)
-    except OSError as e:
-        logging.error(f"Could not write to cache file at {cache_path}: {e}")
+    except OSError:
+        logger.exception("Could not write to cache file at %s", cache_path)
 
 
 def _find_files(task: TranslationTask) -> Iterable[Path]:
     base_path = Path.cwd()
-    included_files = set()
-    for pattern in task.source.include:
-        for file_path in glob(str(base_path / pattern), recursive=True):
-            included_files.add(Path(file_path))
-    excluded_files = set()
-    for pattern in task.exclude:
-        for file_path in glob(str(base_path / pattern), recursive=True):
-            excluded_files.add(Path(file_path))
+    included_files = {path for pattern in task.source.include for path in base_path.rglob(pattern)}
+    excluded_files = {path for pattern in task.exclude for path in base_path.rglob(pattern)}
     return sorted(included_files - excluded_files)
 
 
@@ -109,34 +105,34 @@ def _apply_regex_rewrites(content: str, task: TranslationTask) -> str:
     for pattern, replacement in task.regex_rewrites.items():
         try:
             content = regex.sub(pattern, replacement, content)
-        except regex.error as e:
-            logging.warning(f"Skipping invalid regex rewrite pattern '{pattern}' in task '{task.name}': {e}")
+        except regex.error as e:  # noqa: PERF203
+            logger.warning("Skipping invalid regex rewrite pattern '%s' in task '%s': %s", pattern, task.name, e)
     return content
 
 
-def _extract_matches_from_content(content: str, file_path: Path, task: TranslationTask) -> List[TextMatch]:
-    matches = []
+def _extract_matches_from_content(content: str, file_path: Path, task: TranslationTask) -> list[TextMatch]:
+    matches: list[TextMatch] = []
     for rule_pattern in task.extraction_rules:
         try:
             for match in regex.finditer(rule_pattern, content, regex.MULTILINE, overlapped=True):
                 if match.groups():
-                    matches.append(
+                    matches.append(  # noqa: PERF401
                         TextMatch(
                             original_text=match.group(1),
                             source_file=file_path,
                             span=match.span(1),
                             task_name=task.name,
                             extraction_rule=rule_pattern,
-                        )
+                        ),
                     )
-        except regex.error as e:
-            logging.warning(f"Skipping invalid regex pattern '{rule_pattern}' in task '{task.name}': {e}")
+        except regex.error as e:  # noqa: PERF203
+            logger.warning("Skipping invalid regex pattern '%s' in task '%s': %s", rule_pattern, task.name, e)
     return matches
 
 
 def _detect_newline(file_path: Path) -> str | None:
     try:
-        with open(file_path, encoding="utf-8", newline="") as f:
+        with file_path.open(encoding="utf-8", newline="") as f:
             f.readline()
             if isinstance(f.newlines, tuple):
                 return f.newlines[0]
@@ -145,32 +141,33 @@ def _detect_newline(file_path: Path) -> str | None:
         return None
 
 
-def capture_text_matches(task: TranslationTask, config: GlocalConfig, files_to_process: List[Path]) -> List[TextMatch]:
-    all_matches = []
-    logging.info(f"Task '{task.name}': Found {len(files_to_process)} files to process.")
+def capture_text_matches(task: TranslationTask, config: GlocalConfig, files_to_process: list[Path]) -> list[TextMatch]:
+    """Capture all text matches from source files based on task rules."""
+    all_matches: list[TextMatch] = []
+    logger.info("Task '%s': Found %d files to process.", task.name, len(files_to_process))
     for file_path in files_to_process:
         try:
             content = file_path.read_text("utf-8")
             content = _apply_regex_rewrites(content, task)
             file_matches = _extract_matches_from_content(content, file_path, task)
             all_matches.extend(file_matches)
-        except OSError as e:
-            logging.error(f"Could not read file {file_path}: {e}")
-        except Exception as e:
-            logging.error(f"An unexpected error occurred while processing {file_path}: {e}")
-    logging.info(f"Task '{task.name}': Captured {len(all_matches)} total text matches.")
+        except OSError:  # noqa: PERF203
+            logger.exception("Could not read file %s", file_path)
+        except Exception:
+            logger.exception("An unexpected error occurred while processing %s", file_path)
+    logger.info("Task '%s': Captured %d total text matches.", task.name, len(all_matches))
     if config.debug_options.enabled:
         debug_messages = [f"[DEBUG] Captured: '{match.original_text}' from file {match.source_file} at span {match.span}" for match in all_matches]
         if config.debug_options.log_path:
             log_dir = Path(config.debug_options.log_path)
             log_dir.mkdir(parents=True, exist_ok=True)
             log_file = log_dir / "glocaltext_debug.log"
-            with open(log_file, "a", encoding="utf-8") as f:
+            with log_file.open("a", encoding="utf-8") as f:
                 f.write("\n".join(debug_messages) + "\n")
-            logging.info(f"Debug log saved to {log_file}")
+            logger.info("Debug log saved to %s", log_file)
         else:
             for msg in debug_messages:
-                logging.info(msg)
+                logger.info(msg)
     return all_matches
 
 
@@ -196,31 +193,30 @@ def _get_output_path(file_path: Path, task: TranslationTask) -> Path | None:
     return output_dir / file_path.name
 
 
-def _write_modified_content(output_path: Path, content: str, newline: str | None):
+def _write_modified_content(output_path: Path, content: str, newline: str | None) -> None:
     if output_path.parent.is_file():
-        logging.warning(f"Output directory path {output_path.parent} exists as a file. Deleting it to create directory.")
+        logger.warning("Output directory path %s exists as a file. Deleting it to create directory.", output_path.parent)
         output_path.parent.unlink()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(content, "utf-8", newline=newline)
-    logging.info(f"Successfully wrote modified content to {output_path}")
+    logger.info("Successfully wrote modified content to %s", output_path)
 
 
-def _is_overlapping(span1: Tuple[int, int], span2: Tuple[int, int]) -> bool:
-    """Checks if two spans overlap."""
+def _is_overlapping(span1: tuple[int, int], span2: tuple[int, int]) -> bool:
+    """Check if two spans overlap."""
     return span1[0] < span2[1] and span2[0] < span1[1]
 
 
-def _deduplicate_matches(matches: List[TextMatch]) -> List[TextMatch]:
+def _deduplicate_matches(matches: list[TextMatch]) -> list[TextMatch]:
     """
-    De-duplicates a list of matches, keeping only one match for each unique (text, span) combination.
+    De-duplicate a list of matches, keeping only one for each unique (text, span) combination.
 
-    Why: This function prevents redundant processing of the exact same text captured
+    This function prevents redundant processing of the exact same text captured
     at the exact same location, which can happen if multiple extraction rules overlap
-    perfectly. It ensures that translations are applied correctly to all unique
-    occurrences of a text, even if the text content itself is repeated.
+    perfectly.
     """
     seen_signatures = set()
-    deduplicated_matches: List[TextMatch] = []
+    deduplicated_matches: list[TextMatch] = []
     for match in matches:
         signature = (match.original_text, match.span)
         if signature not in seen_signatures:
@@ -229,15 +225,15 @@ def _deduplicate_matches(matches: List[TextMatch]) -> List[TextMatch]:
     return deduplicated_matches
 
 
-def _group_matches_by_file(matches: List[TextMatch]) -> Dict[Path, List[TextMatch]]:
+def _group_matches_by_file(matches: list[TextMatch]) -> dict[Path, list[TextMatch]]:
     """
-    Groups and de-duplicates a list of TextMatch objects by their source file.
+    Group and de-duplicate a list of TextMatch objects by their source file.
 
     This function filters for matches with translated text, groups them by file,
     and then de-duplicates any overlapping matches within each file.
     """
     # 1. Group all valid matches by file
-    grouped_by_file: Dict[Path, List[TextMatch]] = {}
+    grouped_by_file: dict[Path, list[TextMatch]] = {}
     for match in matches:
         if match.translated_text is not None:
             grouped_by_file.setdefault(match.source_file, []).append(match)
@@ -249,15 +245,13 @@ def _group_matches_by_file(matches: List[TextMatch]) -> Dict[Path, List[TextMatc
     return grouped_by_file
 
 
-def _apply_translations_to_content(content: str, matches: List[TextMatch]) -> str:
+def _apply_translations_to_content(content: str, matches: list[TextMatch]) -> str:
     """
-    (Default Strategy) Applies a list of translations to a raw string content.
+    Apply a list of translations to a raw string content (default strategy).
 
-    Why: This helper isolates the core string manipulation logic. It sorts matches
-    in reverse order of their position in the text. This is a critical detail:
-    by applying changes from the end of the file to the beginning, we ensure that
-    the character indices (spans) of earlier matches are not invalidated by
-    the length changes from later replacements. This is the fallback for unstructured files.
+    This helper isolates the core string manipulation logic. It sorts matches
+    in reverse order of their position to avoid invalidating character indices
+    of earlier matches.
     """
     # Sort matches by their starting position in reverse order.
     for match in sorted(matches, key=lambda m: m.span[0], reverse=True):
@@ -268,16 +262,16 @@ def _apply_translations_to_content(content: str, matches: List[TextMatch]) -> st
     return content
 
 
-def _apply_translations_to_structured_data(
+def _apply_translations_to_structured_data(  # noqa: PLR0913
     content: str,
-    matches: List[TextMatch],
+    matches: list[TextMatch],
     loader: Callable[[str], Any],
     dumper: Callable[[Any], str],
     error_type: type[Exception],
     error_message: str,
 ) -> str:
     """
-    (Generic Structured Strategy) Applies translations to a structured string (JSON/YAML) by parsing it first.
+    Apply translations to a structured string (JSON/YAML) by parsing it first.
 
     This function walks through the nested data structure and replaces string values
     that match the 'original_text' of a provided match. If parsing fails, it
@@ -286,12 +280,12 @@ def _apply_translations_to_structured_data(
     try:
         data = loader(content)
     except error_type:
-        logging.warning(f"{error_message} Falling back to string replacement.")
+        logger.warning("%s Falling back to string replacement.", error_message)
         return _apply_translations_to_content(content, matches)
 
     match_map = {match.original_text: match.translated_text for match in matches if match.translated_text}
 
-    def recursively_update(d: Any) -> Any:
+    def recursively_update(d: Any) -> Any:  # noqa: ANN401
         if isinstance(d, dict):
             return {key: recursively_update(value) for key, value in d.items()}
         if isinstance(d, list):
@@ -304,8 +298,8 @@ def _apply_translations_to_structured_data(
     return dumper(updated_data)
 
 
-def _apply_translations_to_json_structured(content: str, matches: List[TextMatch]) -> str:
-    """(JSON Strategy) Applies translations by parsing the content as JSON."""
+def _apply_translations_to_json_structured(content: str, matches: list[TextMatch]) -> str:
+    """Apply translations by parsing the content as JSON."""
     return _apply_translations_to_structured_data(
         content,
         matches,
@@ -316,8 +310,8 @@ def _apply_translations_to_json_structured(content: str, matches: List[TextMatch
     )
 
 
-def _apply_translations_to_yaml_structured(content: str, matches: List[TextMatch]) -> str:
-    """(YAML Strategy) Applies translations by parsing the content as YAML."""
+def _apply_translations_to_yaml_structured(content: str, matches: list[TextMatch]) -> str:
+    """Apply translations by parsing the content as YAML."""
     return _apply_translations_to_structured_data(
         content,
         matches,
@@ -329,38 +323,37 @@ def _apply_translations_to_yaml_structured(content: str, matches: List[TextMatch
 
 
 # Strategy mapping for different file types
-WRITER_STRATEGIES: Dict[str, Callable[[str, List[TextMatch]], str]] = {
+WRITER_STRATEGIES: dict[str, Callable[[str, list[TextMatch]], str]] = {
     ".json": _apply_translations_to_json_structured,
     ".yaml": _apply_translations_to_yaml_structured,
     ".yml": _apply_translations_to_yaml_structured,
 }
 
 
-def _apply_translations_by_strategy(content: str, matches: List[TextMatch], file_path: Path) -> str:
-    """
-    Selects the appropriate writing strategy based on file extension.
-    """
+def _apply_translations_by_strategy(content: str, matches: list[TextMatch], file_path: Path) -> str:
+    """Select the appropriate writing strategy based on file extension."""
     file_extension = file_path.suffix.lower()
     strategy = WRITER_STRATEGIES.get(file_extension, _apply_translations_to_content)
-    logging.info(f"Using '{strategy.__name__}' strategy for {file_path.name}")
+    logger.info("Using '%s' strategy for %s", strategy.__name__, file_path.name)
     return strategy(content, matches)
 
 
-def _read_file_for_writing(file_path: Path) -> Tuple[str, str | None]:
-    """Reads a file's content and detects its newline character for consistent writing."""
+def _read_file_for_writing(file_path: Path) -> tuple[str, str | None]:
+    """Read a file's content and detect its newline character for consistent writing."""
     original_newline = _detect_newline(file_path)
     content = file_path.read_text("utf-8")
     return content, original_newline
 
 
-def _orchestrate_file_write(file_path: Path, file_matches: List[TextMatch], task: TranslationTask):
+def _orchestrate_file_write(file_path: Path, file_matches: list[TextMatch], task: TranslationTask) -> None:
     """
-    Orchestrates reading, modifying, and writing for a single file.
+    Orchestrate reading, modifying, and writing for a single file.
+
     This function was created by refactoring the original _write_to_file to
     break it down into smaller, more manageable pieces.
     """
     try:
-        logging.info(f"Processing {file_path}: {len(file_matches)} translations to apply.")
+        logger.info("Processing %s: %d translations to apply.", file_path, len(file_matches))
 
         # 1. Read source file
         original_content, original_newline = _read_file_for_writing(file_path)
@@ -373,17 +366,17 @@ def _orchestrate_file_write(file_path: Path, file_matches: List[TextMatch], task
         if output_path:
             _write_modified_content(output_path, modified_content, newline=original_newline)
         else:
-            logging.warning(f"Output path is not defined for a non-in-place task. Skipping write-back for {file_path}.")
+            logger.warning("Output path is not defined for a non-in-place task. Skipping write-back for %s.", file_path)
 
-    except OSError as e:
-        logging.error(f"Could not read or write file {file_path}: {e}")
-    except Exception as e:
-        logging.error(f"An unexpected error occurred during write-back for {file_path}: {e}")
+    except OSError:
+        logger.exception("Could not read or write file %s", file_path)
+    except Exception:
+        logger.exception("An unexpected error occurred during write-back for %s", file_path)
 
 
-def precise_write_back(matches: List[TextMatch], task: TranslationTask):
+def precise_write_back(matches: list[TextMatch], task: TranslationTask) -> None:
     """
-    Groups matches by file and writes the translated content back.
+    Group matches by file and write the translated content back.
 
     Why: This function was refactored to improve clarity and reduce complexity by
     delegating the file I/O orchestration to a new `_orchestrate_file_write` helper,
@@ -391,79 +384,104 @@ def precise_write_back(matches: List[TextMatch], task: TranslationTask):
     adheres to the Single Responsibility Principle.
     """
     if not matches:
-        logging.info("No matches with translated text to write back.")
+        logger.info("No matches with translated text to write back.")
         return
 
     matches_by_file = _group_matches_by_file(matches)
-    logging.info(f"Writing back translations for {len(matches_by_file)} files.")
+    logger.info("Writing back translations for %d files.", len(matches_by_file))
 
     for file_path, file_matches in matches_by_file.items():
         _orchestrate_file_write(file_path, file_matches, task)
 
 
-def _phase_1_capture(task: TranslationTask, config: GlocalConfig) -> Tuple[List[Path], List[TextMatch]]:
+def _phase_1_capture(task: TranslationTask, config: GlocalConfig) -> tuple[list[Path], list[TextMatch]]:
     """Phase 1: Find files and extract all text matches based on task rules."""
     files_to_process = list(_find_files(task))
     all_matches = capture_text_matches(task, config, files_to_process)
     return files_to_process, all_matches
 
 
-def _phase_2_apply_terminating_rules(all_matches: List[TextMatch], task: TranslationTask) -> Tuple[List[TextMatch], List[TextMatch]]:
+def _phase_2_apply_terminating_rules(all_matches: list[TextMatch], task: TranslationTask) -> tuple[list[TextMatch], list[TextMatch]]:
     """Phase 2: Apply terminating rules (e.g., skip, replace) to filter matches."""
     remaining_matches, terminated_matches = apply_terminating_rules(all_matches, task)
-    logging.info(f"Task '{task.name}': {len(terminated_matches)} matches handled by terminating rules.")
+    logger.info("Task '%s': %d matches handled by terminating rules.", task.name, len(terminated_matches))
     return remaining_matches, terminated_matches
 
 
-def _phase_3_check_cache(remaining_matches: List[TextMatch], files_to_process: List[Path], task: TranslationTask) -> Tuple[List[TextMatch], List[TextMatch]]:
-    """Phase 3: Check cache for remaining matches if in incremental mode."""
-    if not task.incremental:
-        logging.info(f"Task '{task.name}': Running in full translation mode (cache is ignored).")
-        return remaining_matches, []
+def _partition_matches_by_cache(matches: list[TextMatch], cache: dict[str, str]) -> tuple[list[TextMatch], list[TextMatch]]:
+    """
+    Partitions matches into those found in the cache and those needing new translation.
 
-    logging.info(f"Task '{task.name}': Running in incremental mode. Checking cache...")
-    cache_path = _get_task_cache_path(files_to_process, task)
-    cache = load_cache(cache_path, task.name)
-    logging.info(f"Loaded {len(cache)} items from cache for task '{task.name}'.")
+    This function iterates through a list of matches once, sorting them into two groups:
+    1.  `cached_matches`: Matches that already have a translation, either from a
+        previous rule or from the cache.
+    2.  `matches_to_translate`: All match instances corresponding to unique original
+        texts that were not found in the cache.
 
-    matches_to_translate: List[TextMatch] = []
-    cached_matches: List[TextMatch] = []
-    # Create a map of checksums for all remaining matches
-    # to avoid re-calculating checksums repeatedly.
-    checksum_map = {m.match_id: calculate_checksum(m.original_text) for m in remaining_matches}
+    Returns:
+        A tuple containing (`matches_to_translate`, `cached_matches`).
 
-    # First, apply all cached translations to any matching text.
-    # This is the crucial step: we iterate through all matches and apply
-    # the cache, instead of just partitioning the list.
-    for match in remaining_matches:
-        checksum = checksum_map[match.match_id]
-        if checksum in cache:
-            if not match.translated_text:  # Apply only if not already translated
-                match.translated_text = cache[checksum]
-                match.provider = "cached"
+    """
+    uncached_matches_by_text: dict[str, list[TextMatch]] = {}
+    cached_matches: list[TextMatch] = []
+
+    for match in matches:
+        # If a translation already exists (e.g., from a rule), treat as cached.
+        if match.translated_text:
             cached_matches.append(match)
+            continue
 
-    # Now, determine which texts still need to be translated.
-    # A text needs translation if any of its instances lack a translated_text.
-    unique_texts_to_translate = {m.original_text for m in remaining_matches if not m.translated_text and calculate_checksum(m.original_text) not in cache}
+        checksum = calculate_checksum(match.original_text)
+        cached_translation = cache.get(checksum)
 
-    # Collect all match objects that correspond to the unique texts needing translation.
-    for text in unique_texts_to_translate:
-        matches_to_translate.extend([m for m in remaining_matches if m.original_text == text and not m.translated_text])
+        if cached_translation:
+            match.translated_text = cached_translation
+            match.provider = "cached"
+            cached_matches.append(match)
+        else:
+            # Group all matches for a text that needs translation.
+            uncached_matches_by_text.setdefault(match.original_text, []).append(match)
 
-    logging.info(f"Found {len(cached_matches)} cached translations.")
-    logging.info(f"{len(matches_to_translate)} texts require new translation.")
+    # Flatten the dictionary values to get a single list of matches to translate.
+    matches_to_translate = [match for matches_list in uncached_matches_by_text.values() for match in matches_list]
     return matches_to_translate, cached_matches
 
 
-def _phase_4_translate(matches_to_translate: List[TextMatch], task: TranslationTask, config: GlocalConfig):
+def _phase_3_check_cache(remaining_matches: list[TextMatch], files_to_process: list[Path], task: TranslationTask) -> tuple[list[TextMatch], list[TextMatch]]:
+    """
+    Phase 3: Check cache for remaining matches if in incremental mode.
+
+    This refactored function delegates the complex partitioning logic to the
+    `_partition_matches_by_cache` helper, significantly reducing its own complexity.
+    Its sole responsibility is to orchestrate the cache check.
+    """
+    if not task.incremental:
+        logger.info("Task '%s': Running in full translation mode (cache is ignored).", task.name)
+        return remaining_matches, []
+
+    logger.info("Task '%s': Running in incremental mode. Checking cache...", task.name)
+    cache_path = _get_task_cache_path(files_to_process, task)
+    cache = load_cache(cache_path, task.name)
+    logger.info("Loaded %d items from cache for task '%s'.", len(cache), task.name)
+
+    matches_to_translate, cached_matches = _partition_matches_by_cache(remaining_matches, cache)
+
+    # To provide an accurate log, count the unique texts that need translation.
+    unique_texts_count = len({m.original_text for m in matches_to_translate})
+
+    logger.info("Found %d cached translations (including rule-based).", len(cached_matches))
+    logger.info("%d unique texts require new translation.", unique_texts_count)
+    return matches_to_translate, cached_matches
+
+
+def _phase_4_translate(matches_to_translate: list[TextMatch], task: TranslationTask, config: GlocalConfig) -> None:
     """Phase 4: Translate matches that were not handled by rules or cache."""
     if matches_to_translate:
-        logging.info(f"Processing {len(matches_to_translate)} matches for API translation.")
+        logger.info("Processing %d matches for API translation.", len(matches_to_translate))
         process_matches(matches_to_translate, task, config)
 
 
-def _phase_5_update_cache(matches_translated: List[TextMatch], files_to_process: List[Path], task: TranslationTask):
+def _phase_5_update_cache(matches_translated: list[TextMatch], files_to_process: list[Path], task: TranslationTask) -> None:
     """Phase 5: Update the cache with newly translated matches."""
     if not task.incremental:
         return
@@ -474,19 +492,19 @@ def _phase_5_update_cache(matches_translated: List[TextMatch], files_to_process:
     matches_to_cache = [m for m in matches_translated if m.translated_text is not None and m.provider not in ("cached", "rule", "skipped")]
     if matches_to_cache:
         cache_path = _get_task_cache_path(files_to_process, task)
-        logging.info(f"Updating cache with {len(matches_to_cache)} new, API-translated items.")
+        logger.info("Updating cache with %d new, API-translated items.", len(matches_to_cache))
         update_cache(cache_path, task.name, matches_to_cache)
 
 
-def _phase_6_write_back(all_processed_matches: List[TextMatch], task: TranslationTask):
+def _phase_6_write_back(all_processed_matches: list[TextMatch], task: TranslationTask) -> None:
     """Phase 6: Write all modified content back to files."""
     if task.output:
         precise_write_back(all_processed_matches, task)
 
 
-def run_task(task: TranslationTask, config: GlocalConfig) -> List[TextMatch]:
+def run_task(task: TranslationTask, config: GlocalConfig) -> list[TextMatch]:
     """
-    Runs a single translation task by orchestrating a multi-phase workflow.
+    Run a single translation task by orchestrating a multi-phase workflow.
 
     Why: This function was refactored from a monolithic block into a clear,
     step-by-step orchestrator. Each "phase" is now a separate, testable

@@ -1,11 +1,15 @@
+"""Main entry point for the GlocalText command-line interface."""
+
 import argparse
 import logging
 import time
-from typing import Any, List, Optional
+from typing import Any
 
 from .config import GlocalConfig, load_config
 from .reporting import generate_summary_report
 from .workflow import run_task
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -14,6 +18,7 @@ def _parse_args() -> argparse.Namespace:
 
     Returns:
         argparse.Namespace: An object containing the parsed command-line arguments.
+
     """
     parser = argparse.ArgumentParser(description="GlocalText Localization Tool")
     parser.add_argument(
@@ -37,7 +42,7 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _load_config(args: argparse.Namespace) -> Optional[GlocalConfig]:
+def _load_config(args: argparse.Namespace) -> GlocalConfig | None:
     """
     Load configuration from a file and apply command-line overrides.
 
@@ -49,20 +54,22 @@ def _load_config(args: argparse.Namespace) -> Optional[GlocalConfig]:
 
     Returns:
         An optional GlocalConfig object if loading is successful, otherwise None.
+
     """
     try:
         config = load_config(args.config)
+    except FileNotFoundError:
+        logger.exception("Configuration file not found at: %s", args.config)
+        return None
+    else:
         if args.debug:
             config.debug_options.enabled = True
             if isinstance(args.debug, str):
                 config.debug_options.log_path = args.debug
         return config
-    except FileNotFoundError:
-        logging.error(f"Configuration file not found at: {args.config}")
-        return None
 
 
-def _run_tasks(config: GlocalConfig, incremental: bool) -> List[Any]:
+def _run_tasks(config: GlocalConfig, *, incremental: bool) -> list[Any]:
     """
     Iterate over and execute all enabled translation tasks.
 
@@ -72,22 +79,23 @@ def _run_tasks(config: GlocalConfig, incremental: bool) -> List[Any]:
 
     Returns:
         A list of all matches found across all executed tasks.
+
     """
-    all_matches: List[Any] = []
+    all_matches: list[Any] = []
     for task in config.tasks:
         if task.enabled:
             if incremental:
                 task.incremental = True
-            logging.info(f"\n--- Running Task: {task.name} ---")
+            logger.info("\n--- Running Task: %s ---", task.name)
             task_matches = run_task(task, config)
             all_matches.extend(task_matches)
-            logging.info(f"--- Task Finished: {task.name} ---")
+            logger.info("--- Task Finished: %s ---", task.name)
     return all_matches
 
 
-def main():
+def main() -> None:
     """
-    Main entry point for the GlocalText command-line interface.
+    Run the main entry point for the GlocalText command-line interface.
 
     Orchestrates the entire process:
     1. Parses command-line arguments.
@@ -103,13 +111,13 @@ def main():
         config = _load_config(args)
 
         if config:
-            all_matches = _run_tasks(config, args.incremental)
+            all_matches = _run_tasks(config, incremental=args.incremental)
             generate_summary_report(all_matches, start_time, config)
 
-    except Exception as e:
-        logging.error(f"An unexpected error occurred: {e}", exc_info=True)
+    except Exception:
+        logger.exception("An unexpected error occurred")
 
-    logging.info("\nAll tasks completed.")
+    logger.info("\nAll tasks completed.")
 
 
 if __name__ == "__main__":

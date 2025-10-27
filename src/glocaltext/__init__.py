@@ -1,3 +1,5 @@
+"""GlocalText: A Python-based tool for automated localization."""
+
 import importlib.metadata
 
 try:

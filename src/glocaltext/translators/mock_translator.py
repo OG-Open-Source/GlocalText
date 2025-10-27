@@ -1,65 +1,60 @@
-import logging
-from typing import Dict, List, Optional
+"""A mock translator for testing purposes."""
 
-from ..config import ProviderSettings
-from ..models import TranslationResult
+import logging
+
+from glocaltext.config import ProviderSettings
+from glocaltext.models import TranslationResult
+
 from .base import BaseTranslator
+
+logger = logging.getLogger(__name__)
 
 
 class MockTranslator(BaseTranslator):
-    """
-    A mock translator for testing purposes. It doesn't perform real translations.
-    Instead, it prepends a '[MOCK]' prefix to each text.
-    """
+    """A mock translator for testing that prepends a '[MOCK]' prefix."""
 
-    def __init__(self, settings: ProviderSettings):
+    def __init__(self, settings: ProviderSettings) -> None:
         """
-        Initializes the Mock Translator.
+        Initialize the Mock Translator.
 
         Args:
-            settings: Provider-specific configurations. This provider currently
-                      does not use any specific settings, but it is accepted
-                      for interface consistency.
+            settings: Provider-specific configurations (ignored).
+
         """
         super().__init__(settings)
 
     def translate(
         self,
-        texts: List[str],
+        texts: list[str],
         target_language: str,
-        source_language: Optional[str] = None,
+        source_language: str | None = None,
+        *,
         debug: bool = False,
-        prompts: Optional[Dict[str, str]] = None,
-    ) -> List[TranslationResult]:
-        """
-        'Translates' a list of texts by prepending '[MOCK] ' to each.
-        """
+        prompts: dict[str, str] | None = None,
+    ) -> list[TranslationResult]:
+        """Prepend '[MOCK] ' to each text to simulate translation."""
         _ = source_language
         _ = prompts
         if not texts:
             return []
 
-        results: List[TranslationResult] = []
+        results: list[TranslationResult] = []
         for text in texts:
             mock_translation = f"[MOCK] {text}"
             results.append(
                 TranslationResult(
                     translated_text=mock_translation,
                     tokens_used=len(text),  # Simulate token usage
-                )
+                ),
             )
 
         if debug:
-            logging.info(f"MockTranslator processed {len(texts)} texts for target '{target_language}'.")
+            logger.info("MockTranslator processed %d texts for target '%s'.", len(texts), target_language)
 
         return results
 
-    def count_tokens(self, texts: List[str], prompts: Optional[Dict[str, str]] = None) -> int:
-        """
-        Simulates token counting for the mock translator.
-        It returns the total number of characters in the texts, which is a simple
-        but effective simulation for testing purposes.
-        """
+    def count_tokens(self, texts: list[str], prompts: dict[str, str] | None = None) -> int:
+        """Simulate token counting by returning the total character count."""
         _ = prompts  # Prompts are not used by this provider
         if not texts:
             return 0

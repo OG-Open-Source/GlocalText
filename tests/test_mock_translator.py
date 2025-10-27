@@ -1,3 +1,5 @@
+"""Unit tests for the MockTranslator."""
+
 import unittest
 
 from glocaltext.config import ProviderSettings
@@ -5,7 +7,9 @@ from glocaltext.translators.mock_translator import MockTranslator
 
 
 class TestMockTranslator(unittest.TestCase):
-    def test_init_success(self):
+    """Test suite for the MockTranslator."""
+
+    def test_init_success(self) -> None:
         """1. Success: Initializes the translator with mock settings."""
         # Arrange
         settings = ProviderSettings()
@@ -14,5 +18,5 @@ class TestMockTranslator(unittest.TestCase):
         translator = MockTranslator(settings=settings)
 
         # Assert
-        self.assertIsInstance(translator, MockTranslator)
-        self.assertEqual(translator.settings, settings)
+        assert isinstance(translator, MockTranslator)
+        assert translator.settings == settings
