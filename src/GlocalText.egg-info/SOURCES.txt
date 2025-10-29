@@ -23,9 +23,11 @@ src/glocaltext.egg-info/top_level.txt
 src/glocaltext/translators/__init__.py
 src/glocaltext/translators/base.py
 src/glocaltext/translators/gemini_translator.py
+src/glocaltext/translators/gemma_translator.py
 src/glocaltext/translators/google_translator.py
 src/glocaltext/translators/mock_translator.py
 tests/test_gemini_translator.py
+tests/test_gemma_translator.py
 tests/test_google_translator.py
 tests/test_mock_translator.py
 tests/test_translate.py

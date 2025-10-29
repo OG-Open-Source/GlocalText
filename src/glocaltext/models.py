@@ -2,8 +2,11 @@
 
 import uuid
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any
+
+from pydantic import BaseModel, Field
 
 
 @dataclass
@@ -79,3 +82,18 @@ class TranslationResult:
 
     translated_text: str
     tokens_used: int | None = None
+
+
+class TranslationList(BaseModel):
+    """Defines the expected JSON structure for the list of translations."""
+
+    translations: list[str] = Field(description="A list of translated strings.")
+
+
+class Provider(str, Enum):
+    """Enumeration of the supported translation providers."""
+
+    GEMINI = "gemini"
+    GOOGLE = "google"
+    MOCK = "mock"
+    GEMMA = "gemma"

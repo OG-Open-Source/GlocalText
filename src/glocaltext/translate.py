@@ -8,7 +8,7 @@ from typing import Any
 import regex
 
 from .config import GlocalConfig, ProviderSettings, Rule, TranslationTask
-from .models import PreProcessedText, TextMatch, TranslationResult
+from .models import PreProcessedText, Provider, TextMatch, TranslationResult
 from .translators import TRANSLATOR_MAPPING
 from .translators.base import BaseTranslator
 
@@ -37,9 +37,17 @@ def _get_translator(provider_name: str, settings: ProviderSettings | None) -> Ba
         An initialized translator instance, or None if instantiation fails.
 
     """
-    translator_class = TRANSLATOR_MAPPING.get(provider_name)
-    if not translator_class:
+    try:
+        provider = Provider(provider_name.lower())
+    except ValueError:
         logger.warning("Unknown translator provider: '%s'", provider_name)
+        return None
+
+    translator_class = TRANSLATOR_MAPPING.get(provider)
+    if not translator_class:
+        # This case should ideally not be hit if the enum and mapping are aligned,
+        # but it's a safeguard.
+        logger.warning("No translator class mapped for provider: '%s'", provider_name)
         return None
 
     try:
@@ -499,7 +507,12 @@ def _handle_rpd_limit(
     """
     if rpd and _rpd_session_counts[provider_name] >= rpd:
         remaining_batches = len(batches) - current_batch_index
-        logger.warning("Request Per Day limit (%d) for '%s' reached. Skipping remaining %d batches.", rpd, provider_name, remaining_batches)
+        logger.warning(
+            "Request Per Day limit (%d) for '%s' reached. Skipping remaining %d batches.",
+            rpd,
+            provider_name,
+            remaining_batches,
+        )
         for remaining_batch in batches[current_batch_index:]:
             _update_matches_on_failure(remaining_batch, item_map, "error_rpd_limit")
         return True
@@ -527,7 +540,13 @@ def _translate_and_update_matches(  # noqa: PLR0913
         if _handle_rpd_limit(provider_name, rpd, batches, i, item_map):
             break
 
-        logger.info("Translating batch %d/%d (%d unique texts) using '%s'.", i + 1, len(batches), len(batch), provider_name)
+        logger.info(
+            "Translating batch %d/%d (%d unique texts) using '%s'.",
+            i + 1,
+            len(batches),
+            len(batch),
+            provider_name,
+        )
         translated_results = _translate_batch(translator, batch, task, provider_name, debug=config.debug_options.enabled)
 
         if rpd:
@@ -569,7 +588,10 @@ def process_matches(
     unique_texts: dict[str, list[TextMatch]] = defaultdict(list)
     for match in matches:
         unique_texts[match.original_text].append(match)
-    logger.info("Found %d unique text strings to process for API translation.", len(unique_texts))
+    logger.info(
+        "Found %d unique text strings to process for API translation.",
+        len(unique_texts),
+    )
 
     pre_processed_items = _apply_translation_rules(unique_texts, task)
     texts_to_translate_api = list(dict.fromkeys(item.text_to_process for item in pre_processed_items if item.text_to_process))
@@ -578,13 +600,21 @@ def process_matches(
         logger.info("All texts were handled by pre-processing or were empty. No API call needed.")
         return
 
-    provider_name = _select_provider(task, list(TRANSLATOR_MAPPING.keys()))
-    logger.info("Selected translator for task '%s': '%s' (Task-specific: %s).", task.name, provider_name, task.translator or "Not set")
+    provider_name = _select_provider(task, [p.value for p in TRANSLATOR_MAPPING])
+    logger.info(
+        "Selected translator for task '%s': '%s' (Task-specific: %s).",
+        task.name,
+        provider_name,
+        task.translator or "Not set",
+    )
     translator = get_translator(provider_name, config)
 
     # Fallback logic if the selected provider fails to initialize
     if not translator:
-        logger.warning("Failed to initialize primary provider '%s'. Trying fallback 'google'.", provider_name)
+        logger.warning(
+            "Failed to initialize primary provider '%s'. Trying fallback 'google'.",
+            provider_name,
+        )
         provider_name = "google"
         translator = get_translator(provider_name, config)
         if not translator:
@@ -602,10 +632,19 @@ def process_matches(
 
     # If key rate limits are not set, fall back to a single, un-throttled batch.
     if rpm is None or tpm is None:
-        logger.info("Provider '%s' is not configured for intelligent scheduling (RPM/TPM). Sending as a single batch.", provider_name)
+        logger.info(
+            "Provider '%s' is not configured for intelligent scheduling (RPM/TPM). Sending as a single batch.",
+            provider_name,
+        )
         batches = [texts_to_translate_api]
     else:
-        logger.info("Provider '%s' configured for intelligent scheduling: RPM=%s, TPM=%s, RPD=%s.", provider_name, rpm, tpm, rpd or "N/A")
+        logger.info(
+            "Provider '%s' configured for intelligent scheduling: RPM=%s, TPM=%s, RPD=%s.",
+            provider_name,
+            rpm,
+            tpm,
+            rpd or "N/A",
+        )
         batches = _create_batches(
             translator=translator,
             texts_to_translate=texts_to_translate_api,

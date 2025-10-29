@@ -5,6 +5,7 @@ import logging
 import time
 from typing import Any
 
+from . import __version__
 from .config import GlocalConfig, load_config
 from .reporting import generate_summary_report
 from .workflow import run_task
@@ -21,6 +22,13 @@ def _parse_args() -> argparse.Namespace:
 
     """
     parser = argparse.ArgumentParser(description="GlocalText Localization Tool")
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+        help="Show the version number and exit.",
+    )
     parser.add_argument(
         "-c",
         "--config",

@@ -58,20 +58,19 @@ class GoogleTranslator(BaseTranslator):
         try:
             # deep-translator can handle batch translation in a single call.
             translated_texts = DeepGoogleTranslator(source=source_language or "auto", target=target_language).translate_batch(texts)
-            return [TranslationResult(translated_text=t) for t in translated_texts]
+
+            results = []
+            for i, text in enumerate(texts):
+                translated = translated_texts[i] if translated_texts and i < len(translated_texts) else ""
+                tokens = len(text) // 4
+                results.append(TranslationResult(translated_text=translated or "", tokens_used=tokens))
         except Exception as e:
             msg = f"deep-translator (Google) request failed: {e}"
             raise ConnectionError(msg) from e
+        return results
 
     def count_tokens(self, texts: list[str], prompts: dict[str, str] | None = None) -> int:
-        """
-        Estimate the token count for Google Translate.
-
-        This is a rough approximation, assuming 4 characters per token.
-        """
+        """Token counting is not supported for this provider and returns 0."""
         _ = prompts  # Prompts are not used by this provider
-        if not texts:
-            return 0
-        # Rough estimation: 4 characters per token.
-        total_chars = sum(len(text) for text in texts)
-        return total_chars // 4
+        _ = texts  # Texts are not used as token counting is not supported
+        return 0

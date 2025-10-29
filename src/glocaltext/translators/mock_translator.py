@@ -49,7 +49,11 @@ class MockTranslator(BaseTranslator):
             )
 
         if debug:
-            logger.info("MockTranslator processed %d texts for target '%s'.", len(texts), target_language)
+            logger.info(
+                "MockTranslator processed %d texts for target '%s'.",
+                len(texts),
+                target_language,
+            )
 
         return results
 

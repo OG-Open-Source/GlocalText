@@ -78,7 +78,10 @@ def update_cache(cache_path: Path, task_name: str, matches_to_cache: list[TextMa
                     if content.strip():
                         full_cache = json.loads(content)
                 except json.JSONDecodeError:
-                    logger.warning("Cache file %s is corrupted. A new one will be created.", cache_path)
+                    logger.warning(
+                        "Cache file %s is corrupted. A new one will be created.",
+                        cache_path,
+                    )
 
         task_cache = full_cache.get(task_name, {})
         new_entries = {calculate_checksum(match.original_text): match.translated_text for match in matches_to_cache if match.translated_text is not None}
@@ -106,7 +109,12 @@ def _apply_regex_rewrites(content: str, task: TranslationTask) -> str:
         try:
             content = regex.sub(pattern, replacement, content)
         except regex.error as e:  # noqa: PERF203
-            logger.warning("Skipping invalid regex rewrite pattern '%s' in task '%s': %s", pattern, task.name, e)
+            logger.warning(
+                "Skipping invalid regex rewrite pattern '%s' in task '%s': %s",
+                pattern,
+                task.name,
+                e,
+            )
     return content
 
 
@@ -126,7 +134,12 @@ def _extract_matches_from_content(content: str, file_path: Path, task: Translati
                         ),
                     )
         except regex.error as e:  # noqa: PERF203
-            logger.warning("Skipping invalid regex pattern '%s' in task '%s': %s", rule_pattern, task.name, e)
+            logger.warning(
+                "Skipping invalid regex pattern '%s' in task '%s': %s",
+                rule_pattern,
+                task.name,
+                e,
+            )
     return matches
 
 
@@ -195,7 +208,10 @@ def _get_output_path(file_path: Path, task: TranslationTask) -> Path | None:
 
 def _write_modified_content(output_path: Path, content: str, newline: str | None) -> None:
     if output_path.parent.is_file():
-        logger.warning("Output directory path %s exists as a file. Deleting it to create directory.", output_path.parent)
+        logger.warning(
+            "Output directory path %s exists as a file. Deleting it to create directory.",
+            output_path.parent,
+        )
         output_path.parent.unlink()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(content, "utf-8", newline=newline)
@@ -366,7 +382,10 @@ def _orchestrate_file_write(file_path: Path, file_matches: list[TextMatch], task
         if output_path:
             _write_modified_content(output_path, modified_content, newline=original_newline)
         else:
-            logger.warning("Output path is not defined for a non-in-place task. Skipping write-back for %s.", file_path)
+            logger.warning(
+                "Output path is not defined for a non-in-place task. Skipping write-back for %s.",
+                file_path,
+            )
 
     except OSError:
         logger.exception("Could not read or write file %s", file_path)
@@ -404,7 +423,11 @@ def _phase_1_capture(task: TranslationTask, config: GlocalConfig) -> tuple[list[
 def _phase_2_apply_terminating_rules(all_matches: list[TextMatch], task: TranslationTask) -> tuple[list[TextMatch], list[TextMatch]]:
     """Phase 2: Apply terminating rules (e.g., skip, replace) to filter matches."""
     remaining_matches, terminated_matches = apply_terminating_rules(all_matches, task)
-    logger.info("Task '%s': %d matches handled by terminating rules.", task.name, len(terminated_matches))
+    logger.info(
+        "Task '%s': %d matches handled by terminating rules.",
+        task.name,
+        len(terminated_matches),
+    )
     return remaining_matches, terminated_matches
 
 
@@ -447,7 +470,11 @@ def _partition_matches_by_cache(matches: list[TextMatch], cache: dict[str, str])
     return matches_to_translate, cached_matches
 
 
-def _phase_3_check_cache(remaining_matches: list[TextMatch], files_to_process: list[Path], task: TranslationTask) -> tuple[list[TextMatch], list[TextMatch]]:
+def _phase_3_check_cache(
+    remaining_matches: list[TextMatch],
+    files_to_process: list[Path],
+    task: TranslationTask,
+) -> tuple[list[TextMatch], list[TextMatch]]:
     """
     Phase 3: Check cache for remaining matches if in incremental mode.
 
@@ -481,7 +508,11 @@ def _phase_4_translate(matches_to_translate: list[TextMatch], task: TranslationT
         process_matches(matches_to_translate, task, config)
 
 
-def _phase_5_update_cache(matches_translated: list[TextMatch], files_to_process: list[Path], task: TranslationTask) -> None:
+def _phase_5_update_cache(
+    matches_translated: list[TextMatch],
+    files_to_process: list[Path],
+    task: TranslationTask,
+) -> None:
     """Phase 5: Update the cache with newly translated matches."""
     if not task.incremental:
         return

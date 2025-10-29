@@ -1,36 +1,28 @@
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
-[project]
+[tool.poetry]
 name = "GlocalText"
 version = "3.3.1"
-authors = [{ name = "OG-Open-Source" }]
 description = "A config-driven script to batch translate files using various providers."
-requires-python = ">=3.10"
+authors = ["OG-Open-Source"]
+license = "MIT"
+readme = "README.md"
 classifiers = [
-  "Programming Language :: Python :: 3",
-  "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
 ]
-dependencies = [
-  "deep-translator",
-  "google-genai",
-  "PyYAML",
-  "regex",
-  "pydantic",
-  "tenacity~=8.2.3",
-]
+homepage = "https://github.com/OG-Open-Source/GlocalText"
+repository = "https://github.com/OG-Open-Source/GlocalText"
 
-[project.scripts]
+[tool.poetry.dependencies]
+python = "^3.10"
+deep-translator = "^1.11.4"
+google-genai = "^1.46.0"
+pyyaml = "^6.0.3"
+regex = "^2025.10.23"
+pydantic = "^2.12.3"
+tenacity = "^9.1.2"
+
+[tool.poetry.scripts]
 glocaltext = "glocaltext.__main__:main"
-
-[project.urls]
-"Homepage" = "https://github.com/OG-Open-Source/GlocalText"
-"Repository" = "https://github.com/OG-Open-Source/GlocalText"
-
-[tool.setuptools.packages.find]
-# This tells setuptools that the packages are under the 'src' directory
-where = ["src"]
 
 [tool.mypy]
 exclude = ["build/"]
@@ -49,3 +41,7 @@ ignore = ["D203", "D212", "COM812"]
 quote-style = "double"
 indent-style = "space"
 line-ending = "lf"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

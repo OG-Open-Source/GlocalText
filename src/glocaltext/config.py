@@ -191,7 +191,12 @@ class GlocalConfig:
         rules = []
         manual_translations = task_data.get("manual_translations", task_data.get("glossary", {}))
         for source, target in manual_translations.items():
-            rules.append(Rule(match={"exact": source}, action={"action": "replace", "value": target}))
+            rules.append(
+                Rule(
+                    match={"exact": source},
+                    action={"action": "replace", "value": target},
+                )
+            )
         return rules
 
     @staticmethod
@@ -200,7 +205,12 @@ class GlocalConfig:
         rules = []
         keyword_replacements = task_data.get("keyword_replacements", {})
         for keyword, replacement in keyword_replacements.items():
-            rules.append(Rule(match={"contains": keyword}, action={"action": "modify", "value": replacement}))
+            rules.append(
+                Rule(
+                    match={"contains": keyword},
+                    action={"action": "modify", "value": replacement},
+                )
+            )
         return rules
 
     @staticmethod
@@ -316,7 +326,9 @@ class GlocalConfig:
         )
 
     @staticmethod
-    def _parse_system_settings(data: dict[str, Any]) -> tuple[DebugOptions, ReportOptions]:
+    def _parse_system_settings(
+        data: dict[str, Any],
+    ) -> tuple[DebugOptions, ReportOptions]:
         """Parse system-wide settings like debug and report options."""
         debug_options = DebugOptions(**data.get("debug_options", {}))
         report_options = ReportOptions(**data.get("report_options", {}))

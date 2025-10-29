@@ -1,3 +1,5 @@
+# For Gemini
+
 # migrate.md
 
 Starting with the Gemini 2.0 release in late 2024, we introduced a new set of
@@ -4158,3 +4160,223 @@ model responses.
 -   To learn about multimodal prompting, see [Prompting with media files](https://ai.google.dev/gemini-api/docs/files#prompt-guide).
 -   To learn about image prompting, see the [Imagen prompt guide](https://ai.google.dev/gemini-api/docs/image-generation#imagen-prompt-guide)
 -   To learn about video prompting, see the [Veo prompt guide](https://ai.google.dev/gemini-api/docs/video#prompt-guide)
+
+# For Gemma
+
+# prompt-structure.md
+
+## Gemma formatting and system instructions
+
+Gemma instruction-tuned (IT) models are trained with a specific _formatter_ that
+annotates all instruction tuning examples with extra information, both at
+training and inference time. The formatter has two purposes:
+
+1. Indicating roles in a conversation, such as the _system_ , _user_ , or _assistant_ roles.
+2. Delineating turns in a conversation, especially in a multi-turn conversation.
+
+Below, we specify the control tokens used by Gemma and their use cases. Note
+that the control tokens are reserved in and specific to our tokenizer.
+
+-   Token to indicate a user turn: `user`
+-   Token to indicate a model turn: `model`
+-   Token to indicate the beginning of dialogue turn: `<start_of_turn>`
+-   Token to indicate the end of dialogue turn: `<end_of_turn>`
+
+Here's an example dialogue:
+
+    <start_of_turn>user
+    knock knock<end_of_turn>
+    <start_of_turn>model
+    who is there<end_of_turn>
+    <start_of_turn>user
+    Gemma<end_of_turn>
+    <start_of_turn>model
+    Gemma who?<end_of_turn>
+
+The token `"<end_of_turn>\n"` is the turn separator, and the prompt prefix is
+`"<start_of_turn>model\n"`. This means that if you'd like to prompt the model
+with a question like, "What is Cramer's Rule?", you should instead feed the
+model as follows:
+
+    "<start_of_turn>user
+    What is Cramer's Rule?<end_of_turn>
+    <start_of_turn>model"
+
+Note that if you want to finetune the pretrained Gemma models with your own
+data, you can use any such schema for control tokens, as long as it's consistent
+between your training and inference use cases.
+
+## System instructions
+
+Gemma's instruction-tuned models are designed to work with only two roles:
+`user` and `model`. Therefore, the `system` role or a system turn is not
+supported.
+
+Instead of using a separate system role, provide system-level instructions
+directly within the initial user prompt. The model instruction following
+capabilities allow Gemma to interpret the instructions effectively. For example:
+
+    <start_of_turn>user
+    Only reply like a pirate.
+
+    What is the answer to life the universe and everything?<end_of_turn>
+    <start_of_turn>model
+    Arrr, 'tis 42,<end_of_turn>
+
+---
+
+# gemma_on_gemini_api.md
+
+## Run Gemma with the Gemini API
+
+The Gemini API provides hosted access to Gemma as a programming API you can use
+in application development or prototyping. This API is a convenient alternative
+to setting up your own local instance of Gemma and web service to handle
+generative AI tasks.
+
+The following examples show how to use Gemma with the Gemini API:
+
+### Python
+
+    from google import genai
+
+    client = genai.Client(api_key="<var translate="no">YOUR_API_KEY</var>")
+
+    response = client.models.generate_content(
+        model="gemma-3-27b-it",
+        contents="Roses are red...",
+    )
+
+    print(response.text)
+
+### Node.js
+
+    import { GoogleGenAI } from "@google/genai";
+
+    const ai = new GoogleGenAI({ apiKey: "<var translate="no">YOUR_API_KEY</var>"});
+
+    const response = await ai.models.generateContent({
+      model: "gemma-3-27b-it",
+      contents: "Roses are red...",
+    });
+    console.log(response.text);
+
+### REST
+
+    curl "https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=<var translate="no">YOUR_API_KEY</var>" \
+    -H 'Content-Type: application/json' \
+    -X POST \
+    -d '{
+      "contents": [{
+        "parts":[{"text": "Roses are red..."}]
+        }]
+       }'
+
+[Get API Key](https://aistudio.google.com/apikey)
+[Try Gemma in AI Studio](https://aistudio.google.com/prompts/new_chat?model=gemma-3-27b-it)
+| **Important:** You must obtain an API key to use the Gemini API, which you can get from the Google [AI Studio](https://aistudio.google.com/apikey) application.
+
+You can access the Gemini API on many platforms, such as mobile, web, and cloud
+services, and with multiple programming languages. For more information on
+Gemini API SDK packages, see the Gemini API
+[SDK downloads](https://ai.google.dev/gemini-api/docs/downloads)
+page. For a general introduction to the Gemini API, see the
+[Gemini API quickstart](https://ai.google.dev/gemini-api/docs/quickstart).
+
+## Image Understanding
+
+Gemma 3 models can process images, enabling many frontier developer use cases that would have historically required domain specific models.
+
+The following examples show how to use Gemma Image inputs with the Gemini API:
+
+### Python
+
+    from google import genai
+
+    client = genai.Client(api_key="<var translate="no">YOUR_API_KEY</var>")
+
+    my_file = client.files.upload(file="path/to/sample.jpg")
+
+    response = client.models.generate_content(
+        model="gemma-3-27b-it",
+        contents=[my_file, "Caption this image."],
+    )
+
+    print(response.text)
+
+### Node.js
+
+    import {
+      GoogleGenAI,
+      createUserContent,
+      createPartFromUri,
+    } from "@google/genai";
+
+    const ai = new GoogleGenAI({ apiKey: "<var translate="no">YOUR_API_KEY</var>" });
+
+    const myfile = await ai.files.upload({
+      file: "path/to/sample.jpg",
+      config: { mimeType: "image/jpeg" },
+    });
+
+    const response = await ai.models.generateContent({
+      model: "gemma-3-27b-it",
+      contents: createUserContent([
+        createPartFromUri(myfile.uri, myfile.mimeType),
+        "Caption this image.",
+      ]),
+    });
+    console.log(response.text);
+     ```
+
+### REST
+
+    IMAGE_PATH="cats-and-dogs.jpg"
+    MIME_TYPE=$(file -b --mime-type "${IMAGE_PATH}")
+    NUM_BYTES=$(wc -c < "${IMAGE_PATH}")
+    DISPLAY_NAME=IMAGE
+
+    tmp_header_file=upload-header.tmp
+
+    # Initial resumable request defining metadata.
+    # The upload url is in the response headers dump them to a file.
+    curl "https://generativelanguage.googleapis.com/upload/v1beta/files?key=<var translate="no">YOUR_API_KEY</var>" \
+      -D upload-header.tmp \
+      -H "X-Goog-Upload-Protocol: resumable" \
+      -H "X-Goog-Upload-Command: start" \
+      -H "X-Goog-Upload-Header-Content-Length: ${NUM_BYTES}" \
+      -H "X-Goog-Upload-Header-Content-Type: ${MIME_TYPE}" \
+      -H "Content-Type: application/json" \
+      -d "{'file': {'display_name': '${DISPLAY_NAME}'}}" 2> /dev/null
+
+    upload_url=$(grep -i "x-goog-upload-url: " "${tmp_header_file}" | cut -d" " -f2 | tr -d "\r")
+    rm "${tmp_header_file}"
+
+    # Upload the actual bytes.
+    curl "${upload_url}" \
+      -H "Content-Length: ${NUM_BYTES}" \
+      -H "X-Goog-Upload-Offset: 0" \
+      -H "X-Goog-Upload-Command: upload, finalize" \
+      --data-binary "@${IMAGE_PATH}" 2> /dev/null > file_info.json
+
+    file_uri=$(jq -r ".file.uri" file_info.json)
+    echo file_uri=$file_uri
+
+    # Now generate content using that file
+    curl "https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=<var translate="no">YOUR_API_KEY</var>" \
+        -H 'Content-Type: application/json' \
+        -X POST \
+        -d '{
+          "contents": [{
+            "parts":[
+              {"file_data":{"mime_type": "'"${MIME_TYPE}"'", "file_uri": "'"${file_uri}"'"}},
+              {"text": "Caption this image."}]
+            }]
+          }' 2> /dev/null > response.json
+
+    cat response.json
+    echo
+
+    jq -r ".candidates[].content.parts[].text" response.json
+
+For a general introduction to the Gemini API Image Understanding capabilities, see the [Image understanding](https://ai.google.dev/gemini-api/docs/image-understanding) guide.
