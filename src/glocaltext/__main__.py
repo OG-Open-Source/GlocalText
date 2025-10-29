@@ -2,11 +2,13 @@
 
 import argparse
 import logging
+import sys
 import time
 from typing import Any
 
 from . import __version__
 from .config import GlocalConfig, load_config
+from .logging_utils import setup_logging
 from .reporting import generate_summary_report
 from .workflow import run_task
 
@@ -94,10 +96,11 @@ def _run_tasks(config: GlocalConfig, *, incremental: bool) -> list[Any]:
         if task.enabled:
             if incremental:
                 task.incremental = True
-            logger.info("\n--- Running Task: %s ---", task.name)
+            logger.info("Running Task: '%s'", task.name)
+            logger.debug("Starting task '%s' with config: %s", task.name, task.model_dump_json(indent=2))
             task_matches = run_task(task, config)
             all_matches.extend(task_matches)
-            logger.info("--- Task Finished: %s ---", task.name)
+            logger.debug("Task '%s' finished, found %d matches.", task.name, len(task_matches))
     return all_matches
 
 
@@ -112,10 +115,10 @@ def main() -> None:
     4. Generates a summary report.
     """
     start_time = time.time()
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
     try:
         args = _parse_args()
+        setup_logging(version=__version__, debug=args.debug)
         config = _load_config(args)
 
         if config:
@@ -124,8 +127,10 @@ def main() -> None:
 
     except Exception:
         logger.exception("An unexpected error occurred")
+        logger.critical("An unrecoverable error occurred. Please check the logs for details.")
+        sys.exit(1)
 
-    logger.info("\nAll tasks completed.")
+    logger.info("All tasks completed.")
 
 
 if __name__ == "__main__":

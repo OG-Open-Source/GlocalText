@@ -81,7 +81,7 @@ def _log_summary_to_console(metrics: dict, total_run_time: float) -> None:
         total_run_time: The total execution time of all tasks.
 
     """
-    logger.info("\n%s", "=" * 40)
+    logger.info("%s", "=" * 40)
     logger.info(" GlocalText - Translation Summary")
     logger.info("=" * 40)
     logger.info("- Total Run Time: %.2f seconds", total_run_time)
@@ -94,7 +94,7 @@ def _log_summary_to_console(metrics: dict, total_run_time: float) -> None:
         metrics["total_matches"] - metrics["translations_applied"],
     )
 
-    logger.info("\n--- Provider Breakdown ---")
+    logger.info("--- Provider Breakdown ---")
     for provider, data in metrics["provider_breakdown"].items():
         token_str = f" (Tokens: {data['tokens']})" if data["tokens"] > 0 else ""
         logger.info("- %s Translations: %s%s", provider.title(), data["count"], token_str)
@@ -103,7 +103,7 @@ def _log_summary_to_console(metrics: dict, total_run_time: float) -> None:
         logger.info("- Total Tokens Consumed: %s", metrics["total_tokens"])
 
     if metrics.get("extraction_rule_breakdown"):
-        logger.info("\n--- Extraction Rule Breakdown ---")
+        logger.info("--- Extraction Rule Breakdown ---")
         # Sort for consistent output
         sorted_rules = sorted(
             metrics["extraction_rule_breakdown"].items(),
@@ -166,7 +166,7 @@ def _export_summary_to_csv(all_matches: list[TextMatch], config: GlocalConfig, f
                     getattr(match, "extraction_rule", "N/A"),
                 ]
                 writer.writerow(row)
-        logger.info("\n--- Report ---")
+        logger.info("--- Report ---")
         logger.info("- CSV report exported to: %s", filepath)
     except OSError:
         logger.exception("Failed to write CSV report")

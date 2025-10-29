@@ -10,18 +10,28 @@ from .base import BaseTranslator
 logger = logging.getLogger(__name__)
 
 
-class MockTranslator(BaseTranslator):
-    """A mock translator for testing that prepends a '[MOCK]' prefix."""
+class MockTranslatorError(Exception):
+    """Custom exception for mock translator errors."""
 
-    def __init__(self, settings: ProviderSettings) -> None:
+
+class MockTranslator(BaseTranslator):
+    """
+    A mock translator for testing that prepends a '[MOCK]' prefix.
+
+    It can also be configured to raise an exception for testing error handling.
+    """
+
+    def __init__(self, settings: ProviderSettings, *, return_error: bool = False) -> None:
         """
         Initialize the Mock Translator.
 
         Args:
             settings: Provider-specific configurations (ignored).
+            return_error: If True, the translate method will raise an exception.
 
         """
         super().__init__(settings)
+        self.return_error = return_error
 
     def translate(
         self,
@@ -32,9 +42,20 @@ class MockTranslator(BaseTranslator):
         debug: bool = False,
         prompts: dict[str, str] | None = None,
     ) -> list[TranslationResult]:
-        """Prepend '[MOCK] ' to each text to simulate translation."""
+        """
+        Prepend '[MOCK] ' to each text to simulate translation.
+
+        Raises:
+            Exception: If `return_error` was set to True during initialization.
+
+        """
         _ = source_language
         _ = prompts
+
+        if self.return_error:
+            msg = "Mock translator was configured to fail."
+            raise MockTranslatorError(msg)
+
         if not texts:
             return []
 
@@ -49,7 +70,7 @@ class MockTranslator(BaseTranslator):
             )
 
         if debug:
-            logger.info(
+            logger.debug(
                 "MockTranslator processed %d texts for target '%s'.",
                 len(texts),
                 target_language,

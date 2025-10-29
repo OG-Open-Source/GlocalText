@@ -128,8 +128,8 @@ class GeminiTranslator(BaseTranslator):
         )
 
         if debug:
-            logger.info(
-                "[DEBUG] Gemini Request:\n- Model: %s\n- Prompt Body (first 300 chars): %s...",
+            logger.debug(
+                "Gemini Request:\n- Model: %s\n- Prompt Body (first 300 chars): %s...",
                 self.model_name,
                 prompt[:300],
             )

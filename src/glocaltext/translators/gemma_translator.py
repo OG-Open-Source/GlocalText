@@ -96,6 +96,9 @@ class GemmaTranslator(BaseTranslator):
         except (ValidationError, json.JSONDecodeError):
             logger.debug("Direct JSON parsing failed. Attempting to extract from text.")
         else:
+            if len(data.translations) != len(original_texts):
+                msg = f"Mismatched translation count: expected {len(original_texts)}, but got {len(data.translations)}"
+                raise ValueError(msg)
             return data.translations
 
         # Attempt 2: Find JSON within markdown code blocks (e.g., ```json ... ```)
@@ -158,8 +161,8 @@ class GemmaTranslator(BaseTranslator):
         )
 
         if debug:
-            logger.info(
-                "[DEBUG] Gemma Request:\n- Model: %s\n- Prompt Body (first 300 chars): %s...",
+            logger.debug(
+                "Gemma Request:\n- Model: %s\n- Prompt Body (first 300 chars): %s...",
                 self.model_name,
                 prompt[:300],
             )

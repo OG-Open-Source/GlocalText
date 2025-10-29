@@ -93,3 +93,109 @@ def test_translate_failure_on_api_error(
     # Act & Assert
     with pytest.raises(ConnectionError, match="A Google API error occurred"):
         translator.translate(texts=["Hello"], target_language="fr")
+
+
+def test_init_raises_connection_error_on_client_failure() -> None:
+    """Raise ConnectionError if the genai.Client fails to initialize."""
+    # Arrange
+    settings = ProviderSettings(api_key="fake-api-key")
+    with (
+        patch(
+            "glocaltext.translators.gemma_translator.genai.Client",
+            side_effect=api_core_exceptions.GoogleAPICallError("Auth error"),
+        ),
+        pytest.raises(ConnectionError, match="Failed to initialize Gemma client"),
+    ):
+        # Act & Assert
+        GemmaTranslator(settings=settings)
+
+
+def test_translate_with_empty_list(mock_translator: tuple[GemmaTranslator, MagicMock]) -> None:
+    """Test that translating an empty list returns an empty list immediately."""
+    # Arrange
+    translator, mock_genai_client = mock_translator
+    # Act
+    results = translator.translate(texts=[], target_language="fr")
+    # Assert
+    assert results == []
+    mock_genai_client.models.generate_content.assert_not_called()
+
+
+def test_translate_handles_empty_api_response(mock_translator: tuple[GemmaTranslator, MagicMock]) -> None:
+    """Test that a ValueError is raised if the API returns an empty text response."""
+    # Arrange
+    translator, mock_genai_client = mock_translator
+    mock_response = MagicMock()
+    type(mock_response).text = PropertyMock(return_value="")
+    mock_genai_client.models.generate_content.return_value = mock_response
+
+    # Act & Assert
+    with pytest.raises(ValueError, match="response text is empty"):
+        translator.translate(texts=["Hello"], target_language="fr")
+
+
+def test_translate_handles_mismatched_translation_count(
+    mock_translator: tuple[GemmaTranslator, MagicMock],
+) -> None:
+    """Test ValueError is raised if the number of translations does not match the input."""
+    # Arrange
+    translator, mock_genai_client = mock_translator
+    response_json = {"translations": ["Bonjour"]}  # Only one translation for two inputs
+    mock_response = MagicMock()
+    type(mock_response).text = PropertyMock(return_value=json.dumps(response_json))
+    mock_response.usage_metadata.total_token_count = 5
+    mock_genai_client.models.generate_content.return_value = mock_response
+
+    # Act & Assert
+    with pytest.raises(ValueError, match="Mismatched translation count"):
+        translator.translate(texts=["Hello", "World"], target_language="fr")
+
+
+def test_parse_response_from_markdown(mock_translator: tuple[GemmaTranslator, MagicMock]) -> None:
+    """Test that the parser can extract a valid JSON object from a markdown block."""
+    # Arrange
+    translator, _ = mock_translator
+    response_text = 'Some introductory text.\n```json\n{"translations": ["Bonjour", "Monde"]}\n```'
+    original_texts = ["Hello", "World"]
+
+    # Act
+    translations = translator._parse_response(response_text, original_texts)  # noqa: SLF001
+
+    # Assert
+    assert translations == ["Bonjour", "Monde"]
+
+
+def test_parse_response_raises_error_if_no_json_found(
+    mock_translator: tuple[GemmaTranslator, MagicMock],
+) -> None:
+    """Test that a ValueError is raised if no JSON can be found in the response."""
+    # Arrange
+    translator, _ = mock_translator
+    response_text = "This is a response with no JSON object."
+    original_texts = ["Hello"]
+
+    # Act & Assert
+    with pytest.raises(ValueError, match="Could not find a valid JSON object"):
+        translator._parse_response(response_text, original_texts)  # noqa: SLF001
+
+
+def test_count_tokens_with_empty_list(mock_translator: tuple[GemmaTranslator, MagicMock]) -> None:
+    """Test that counting tokens for an empty list returns 0."""
+    # Arrange
+    translator, mock_genai_client = mock_translator
+    # Act
+    token_count = translator.count_tokens([])
+    # Assert
+    assert token_count == 0
+    mock_genai_client.models.count_tokens.assert_not_called()
+
+
+def test_count_tokens_handles_api_error(mock_translator: tuple[GemmaTranslator, MagicMock]) -> None:
+    """Test that token counting returns 0 if the API call fails."""
+    # Arrange
+    translator, mock_genai_client = mock_translator
+    mock_genai_client.models.count_tokens.side_effect = api_core_exceptions.GoogleAPICallError("API error")
+    # Act
+    token_count = translator.count_tokens(["text"])
+    # Assert
+    assert token_count == 0

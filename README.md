@@ -43,7 +43,7 @@ This unified, firewall-inspired `rules` engine provides a clear and powerful way
     -   `replace`: A **terminating** action that provides an authoritative, final translation for a text block, skipping the API entirely.
     -   `protect`: A **pre-processing** action that protects a specific segment (like a brand name or variable) _within_ a larger text block, allowing the rest of the text to be translated.
     -   `modify`: A **pre-processing** action that replaces a matched segment before passing the modified text back to the rules engine for further processing or translation. It supports regex capture groups for complex substitutions.
--   **Multiple Provider Support**: Configure and use different translation providers like Google Translate and Google Gemini.
+-   **Multiple Provider Support**: Configure and use different translation providers like Google Translate, Gemini, and Gemma.
 -   **Task-Based Configuration**: Define multiple, independent translation tasks in a single configuration file.
 -   **Glob Pattern Matching**: Precisely include or exclude files for translation using `glob` patterns.
 -   **Flexible Output Control**: Choose to either modify original files directly (`in_place: true`) or create new, translated versions in a specified path (`in_place: false`).
@@ -83,7 +83,7 @@ Each item in the `tasks` list defines a self-contained translation job with the 
 
 ### Specifying a Translator per Task
 
-You can specify a particular translation provider for an individual task using the `translator` option. This allows you to mix and match providers (e.g., use 'gemini' for one task and 'google' for another).
+You can specify a particular translation provider for an individual task using the `translator` option. This allows you to mix and match providers (e.g., use 'gemini' for one task, 'gemma' for another, and 'google' for a third).
 
 If the specified translator is not available (e.g., missing API key), the system will log a warning and fall back to the default provider.
 
@@ -92,6 +92,9 @@ tasks:
     - name: "Documentation"
       translator: "gemini"
       # ... other task settings
+    - name: "API Reference"
+      translator: "gemma"
+      # ... other task settings
     - name: "Code Comments"
       translator: "google"
       # ... other task settings
@@ -99,11 +102,11 @@ tasks:
 
 ### Provider Settings
 
-You can configure provider-specific settings under the `providers` key. For instance, for the `gemini` provider, you can specify the model and retry parameters.
+You can configure provider-specific settings under the `providers` key. For instance, for providers like `gemini` and `gemma`, you can specify the model and other API-specific parameters.
 
 These settings offer fine-grained control over API interactions:
 
--   `model`: Specifies the model to use (e.g., `"gemini-flash-lite-latest"`).
+-   `model`: Specifies the model to use (e.g., `"gemini-flash-lite-latest"` for Gemini, or `"gemma-3-27b-it"` for Gemma).
 -   `retry_attempts`: The number of times to retry a failed API call.
 -   `retry_delay`: The delay in seconds between retries.
 -   `retry_backoff_factor`: A multiplier to increase the delay between subsequent retries (e.g., a factor of `2` results in delays of 1s, 2s, 4s, ...).
@@ -117,7 +120,7 @@ In addition to retry logic, GlocalText now includes a powerful **intelligent sch
 
 GlocalText uses these values to automatically manage API calls, batching texts together and spacing out requests to avoid exceeding provider limits. This ensures high efficiency for large translation jobs.
 
-**Importantly**, all of these parameters, including the new scheduling options and the existing `model` and retry settings, are **optional**. If you do not provide any scheduling parameters, GlocalText will revert to its default behavior of submitting all texts in a single batch. If you only provide an `api_key`, GlocalText will use sensible defaults for all other settings (`model: "gemini-flash-lite-latest"`, `retry_attempts: 3`).
+**Importantly**, all of these parameters, including the new scheduling options and the existing `model` and retry settings, are **optional**. If you do not provide any scheduling parameters, GlocalText will revert to its default behavior of submitting all texts in a single batch. If you only provide an `api_key`, GlocalText will use sensible defaults for all other settings (e.g., `model: "gemini-flash-lite-latest"` for Gemini, `retry_attempts: 3`).
 
 ### API Key Configuration
 
@@ -133,7 +136,7 @@ This approach allows for flexibility in development (using the config file) and 
 ### Command-Line Options
 
 -   `--config <path>` or `-c <path>`: Specifies the path to your `glocaltext_config.yaml` file. Defaults to `glocaltext_config.yaml` in the current directory.
--   `--debug [LOG_DIR_PATH]`: Enables detailed debug logging. If an optional directory path is provided, the debug log will be saved to `glocaltext_debug.log` inside that directory. Otherwise, debug information is printed to the console.
+-   `--debug`: Enables detailed debug logging. The debug log will be saved to `glocaltext_debug.log` in the current directory.
 
 ## Contributors
 

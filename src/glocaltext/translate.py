@@ -74,13 +74,19 @@ def get_translator(provider_name: str, config: GlocalConfig) -> BaseTranslator |
     if provider_name in _translator_cache:
         return _translator_cache[provider_name]
 
-    provider_settings = getattr(config.providers, provider_name, None)
+    # Use dictionary .get() to reliably access provider settings.
+    # The previous `getattr` approach failed because `config.providers` is a
+    # dictionary, not an object where keys can be accessed as attributes.
+    provider_settings = config.providers.get(provider_name)
+    if provider_settings is None:
+        msg = f"Provider '{provider_name}' is not configured in your settings file."
+        raise ValueError(msg)
 
     translator = _get_translator(provider_name, provider_settings)
 
     if translator:
         _translator_cache[provider_name] = translator
-        logger.info("Provider '%s' initialized.", provider_name)
+        logger.debug("Provider '%s' initialized.", provider_name)
 
     return translator
 
@@ -433,7 +439,7 @@ def _translate_batch(
             target_language=task.target_lang,
             source_language=task.source_lang,
             debug=debug,
-            prompts=task.prompts,
+            prompts=task.prompts if task.prompts else None,
         )
     except Exception:
         logger.exception("Error translating batch with %s", provider_name)
@@ -514,7 +520,7 @@ def _handle_rpd_limit(
             remaining_batches,
         )
         for remaining_batch in batches[current_batch_index:]:
-            _update_matches_on_failure(remaining_batch, item_map, "error_rpd_limit")
+            _update_matches_on_failure(remaining_batch, item_map, "rpd_limit")
         return True
     return False
 
@@ -563,7 +569,7 @@ def _translate_and_update_matches(  # noqa: PLR0913
             _update_matches_on_failure(batch, item_map, provider_name)
 
         if i < len(batches) - 1 and delay > 0:
-            logger.info("RPM delay: sleeping for %.2f seconds.", delay)
+            logger.debug("RPM delay: sleeping for %.2f seconds.", delay)
             time.sleep(delay)
 
 
@@ -588,10 +594,7 @@ def process_matches(
     unique_texts: dict[str, list[TextMatch]] = defaultdict(list)
     for match in matches:
         unique_texts[match.original_text].append(match)
-    logger.info(
-        "Found %d unique text strings to process for API translation.",
-        len(unique_texts),
-    )
+    logger.info("Found %d unique text strings to process for API translation.", len(unique_texts))
 
     pre_processed_items = _apply_translation_rules(unique_texts, task)
     texts_to_translate_api = list(dict.fromkeys(item.text_to_process for item in pre_processed_items if item.text_to_process))
@@ -601,7 +604,7 @@ def process_matches(
         return
 
     provider_name = _select_provider(task, [p.value for p in TRANSLATOR_MAPPING])
-    logger.info(
+    logger.debug(
         "Selected translator for task '%s': '%s' (Task-specific: %s).",
         task.name,
         provider_name,
@@ -624,7 +627,7 @@ def process_matches(
             _update_matches_on_failure(list(texts_to_translate_api), item_map, "initialization_error")
             return
 
-    provider_settings = getattr(config.providers, provider_name, ProviderSettings())
+    provider_settings = translator.settings or ProviderSettings()
     rpm = provider_settings.rpm
     tpm = provider_settings.tpm
     rpd = provider_settings.rpd
@@ -638,7 +641,7 @@ def process_matches(
         )
         batches = [texts_to_translate_api]
     else:
-        logger.info(
+        logger.debug(
             "Provider '%s' configured for intelligent scheduling: RPM=%s, TPM=%s, RPD=%s.",
             provider_name,
             rpm,
@@ -650,7 +653,7 @@ def process_matches(
             texts_to_translate=texts_to_translate_api,
             batch_size=batch_size,
             tpm=tpm,
-            prompts=task.prompts,
+            prompts=task.prompts if task.prompts else None,
         )
 
     _translate_and_update_matches(

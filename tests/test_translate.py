@@ -4,7 +4,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from glocaltext.config import (
+    BatchOptions,
     GlocalConfig,
     Output,
     ProviderSettings,
@@ -13,6 +16,10 @@ from glocaltext.config import (
 )
 from glocaltext.models import TextMatch, TranslationResult
 from glocaltext.translate import (
+    _create_batches,
+    _create_simple_batches,
+    _create_smart_batches,
+    _log_oversized_batch_warning,
     _rpd_session_counts,
     _translator_cache,
     get_translator,
@@ -20,6 +27,20 @@ from glocaltext.translate import (
 )
 from glocaltext.translators.base import BaseTranslator
 from glocaltext.translators.gemini_translator import GeminiTranslator
+
+# Constants for magic values to avoid PLR2004
+RPM_LIMIT = 60
+TPM_LIMIT = 100
+RPD_LIMIT = 1
+BATCH_SIZE = 10
+SMALL_BATCH_SIZE = 2
+EQUAL_BATCH_SIZE = 5
+LARGE_BATCH_SIZE = 10
+TOKENS_PER_TEXT_HEAVY = 90
+TOKENS_PER_TEXT_LIGHT = 50
+TOKENS_PER_TEXT_SIMPLE = 10
+TOKENS_FOR_OVERSIZED = 150
+DELAY_SECONDS = 1.0
 
 
 class TestGetTranslator(unittest.TestCase):
@@ -34,7 +55,7 @@ class TestGetTranslator(unittest.TestCase):
         # Arrange
         mock_config = GlocalConfig()
         # Mock a simple provider setting
-        mock_config.providers.mock = ProviderSettings()
+        mock_config.providers["mock"] = ProviderSettings()
 
         # Act
         # First call should create and cache the translator
@@ -56,7 +77,7 @@ class TestGetTranslator(unittest.TestCase):
         error_message = "API key is missing"
 
         mock_config = GlocalConfig()
-        mock_config.providers.gemini = ProviderSettings(api_key="fake-key")
+        mock_config.providers["gemini"] = ProviderSettings(api_key="fake-key")
 
         # Act & Assert
         with (
@@ -75,16 +96,13 @@ class TestGetTranslator(unittest.TestCase):
             assert any(expected_log in log for log in cm.output), f"Expected log message not found in {cm.output}"
 
     def test_get_translator_unknown_provider(self) -> None:
-        """3. Unknown Provider: Returns None for an unregistered provider name."""
+        """3. Unknown Provider: Raises ValueError for an unconfigured provider."""
         # Arrange
         mock_config = GlocalConfig()
 
         # Act & Assert
-        with self.assertLogs(level="WARNING") as cm:
-            translator = get_translator("unknown_provider", mock_config)
-            assert translator is None
-            # Check the log output from the root logger
-            assert any("Unknown translator provider: 'unknown_provider'" in log for log in cm.output)
+        with pytest.raises(ValueError, match=r"Provider 'unknown_provider' is not configured in your settings file."):
+            get_translator("unknown_provider", mock_config)
 
 
 @patch("glocaltext.translate.get_translator")
@@ -112,25 +130,26 @@ class TestProcessMatches(unittest.TestCase):
         # Mock the translate method to return a predictable result
         self.mock_translator.translate.return_value = [TranslationResult(translated_text="Bonjour", tokens_used=10)]
         # Ensure the config has the provider settings for the test
-        self.mock_config.providers.gemini = self.mock_translator.settings
+        self.mock_config.providers["gemini"] = self.mock_translator.settings
 
     def test_smart_scheduling_with_rpm_and_tpm(self, mock_get_translator: MagicMock) -> None:
         """1. Smart Scheduling: Creates batches and delays correctly with RPM/TPM."""
         # Arrange
         mock_get_translator.return_value = self.mock_translator
-        provider_settings = ProviderSettings(rpm=60, tpm=100, batch_size=10)
+        provider_settings = ProviderSettings(rpm=RPM_LIMIT, tpm=TPM_LIMIT, batch_size=BATCH_SIZE)
         self.mock_translator.settings = provider_settings
-        self.mock_config.providers.gemini = provider_settings
+        self.mock_config.providers["gemini"] = provider_settings
         self.mock_translator.translate.side_effect = [
-            [TranslationResult(translated_text="Batch 1", tokens_used=90)],
-            [TranslationResult(translated_text="Batch 2", tokens_used=50)],
+            [TranslationResult(translated_text="Batch 1", tokens_used=TOKENS_PER_TEXT_HEAVY)],
+            [TranslationResult(translated_text="Batch 2", tokens_used=TOKENS_PER_TEXT_LIGHT)],
         ]
 
         # Define token counts for each text
-        def mock_count_tokens(texts: list[str]) -> int:
+        def mock_count_tokens(texts: list[str], _prompts: dict | None = None) -> int:
+            """Mock token counting for smart batching."""
             if len(texts) > 1:
-                return 120  # This will force a new batch
-            return 90 if "heavy" in texts[0] else 50
+                return TOKENS_PER_TEXT_HEAVY + TOKENS_PER_TEXT_LIGHT  # This will force a new batch
+            return TOKENS_PER_TEXT_HEAVY if "heavy" in texts[0] else TOKENS_PER_TEXT_LIGHT
 
         self.mock_translator.count_tokens.side_effect = mock_count_tokens
 
@@ -162,7 +181,7 @@ class TestProcessMatches(unittest.TestCase):
         # Second call for "light text"
         assert self.mock_translator.translate.call_args_list[1].kwargs["texts"] == ["light text"]
 
-        mock_sleep.assert_called_once_with(1.0)  # 60 RPM = 1s delay
+        mock_sleep.assert_called_once_with(DELAY_SECONDS)  # 60 RPM = 1s delay
         assert matches[0].translated_text == "Batch 1"
         assert matches[1].translated_text == "Batch 2"
 
@@ -170,11 +189,11 @@ class TestProcessMatches(unittest.TestCase):
         """2. RPD Limit: Stops processing when the daily request limit is reached."""
         # Arrange
         mock_get_translator.return_value = self.mock_translator
-        provider_settings = ProviderSettings(rpm=60, tpm=100, rpd=1, batch_size=1)
+        provider_settings = ProviderSettings(rpm=RPM_LIMIT, tpm=TPM_LIMIT, rpd=RPD_LIMIT, batch_size=1)
         self.mock_translator.settings = provider_settings
-        self.mock_config.providers.gemini = provider_settings
-        self.mock_translator.translate.return_value = [TranslationResult(translated_text="Translated", tokens_used=50)]
-        self.mock_translator.count_tokens.return_value = 50
+        self.mock_config.providers["gemini"] = provider_settings
+        self.mock_translator.translate.return_value = [TranslationResult(translated_text="Translated", tokens_used=TOKENS_PER_TEXT_LIGHT)]
+        self.mock_translator.count_tokens.return_value = TOKENS_PER_TEXT_LIGHT
 
         matches = [
             TextMatch(
@@ -198,13 +217,12 @@ class TestProcessMatches(unittest.TestCase):
             process_matches(matches, self.mock_task, self.mock_config)
 
             # Check for the specific warning log
-            assert any("Request Per Day limit (1) for 'gemini' reached." in log for log in cm.output)
+            assert any(f"Request Per Day limit ({RPD_LIMIT}) for 'gemini' reached." in log for log in cm.output)
 
         self.mock_translator.translate.assert_called_once()
         assert matches[0].translated_text == "Translated"
         assert matches[1].translated_text is None  # The second match should not be translated
-        # This assertion reflects the current implementation where the provider name is nested.
-        assert matches[1].provider == "error_error_rpd_limit"
+        assert matches[1].provider == "error_rpd_limit"
 
     def test_fallback_to_single_batch_without_limits(self, mock_get_translator: MagicMock) -> None:
         """3. No Limits: Falls back to a single batch when RPM/TPM are not set."""
@@ -213,7 +231,7 @@ class TestProcessMatches(unittest.TestCase):
         # No RPM/TPM set in provider settings
         provider_settings = ProviderSettings()
         self.mock_translator.settings = provider_settings
-        self.mock_config.providers.gemini = provider_settings
+        self.mock_config.providers["gemini"] = provider_settings
         self.mock_translator.translate.return_value = [
             TranslationResult(translated_text="Bonjour", tokens_used=10),
             TranslationResult(translated_text="Monde", tokens_used=10),
@@ -254,3 +272,139 @@ class TestProcessMatches(unittest.TestCase):
             mock_sleep.assert_not_called()
             assert matches[0].translated_text == "Bonjour"
             assert matches[1].translated_text == "Monde"
+
+    def test_provider_initialization_fallback(self, mock_get_translator: MagicMock) -> None:
+        """4. Fallback: Uses fallback provider if primary fails to initialize."""
+        # Arrange
+        # Fail on first call (primary), succeed on second (fallback)
+        mock_get_translator.side_effect = [None, self.mock_translator]
+
+        matches = [TextMatch(original_text="Hello", source_file=Path("f.txt"), span=(0, 5), task_name="t", extraction_rule="r")]
+
+        # Act & Assert
+        with self.assertLogs("glocaltext.translate", level="WARNING") as cm:
+            process_matches(matches, self.mock_task, self.mock_config)
+
+            # Check that a warning was logged about the primary failure
+            assert any("Failed to initialize primary provider" in log for log in cm.output)
+
+        # Assert that the fallback translator was used
+        self.mock_translator.translate.assert_called_once_with(
+            texts=["Hello"],
+            target_language="fr",
+            source_language="en",
+            debug=False,
+            prompts=None,
+        )
+        assert matches[0].translated_text == "Bonjour"
+        # Ensure get_translator was called twice
+        assert mock_get_translator.call_count == 2  # noqa: PLR2004
+
+    def test_provider_initialization_critical_failure(self, mock_get_translator: MagicMock) -> None:
+        """5. Critical Failure: Aborts if fallback provider also fails."""
+        # Arrange
+        # Fail on both calls
+        mock_get_translator.side_effect = [None, None]
+
+        matches = [TextMatch(original_text="Hello", source_file=Path("f.txt"), span=(0, 5), task_name="t", extraction_rule="r")]
+
+        # Act & Assert
+        with self.assertLogs("glocaltext.translate", level="ERROR") as cm:
+            process_matches(matches, self.mock_task, self.mock_config)
+
+            # Check that a critical error was logged
+            assert any("CRITICAL: Fallback provider 'google' also failed" in log for log in cm.output)
+
+        # Assert that translate was never called and the match is marked with an error
+        self.mock_translator.translate.assert_not_called()
+        assert matches[0].translated_text is None
+        assert matches[0].provider == "error_initialization_error"
+        assert mock_get_translator.call_count == 2  # noqa: PLR2004
+
+    def test_translation_api_error_handling(self, mock_get_translator: MagicMock) -> None:
+        """6. API Error: Handles exceptions during the API call gracefully."""
+        # Arrange
+        mock_get_translator.return_value = self.mock_translator
+        # The API call itself fails
+        self.mock_translator.translate.side_effect = Exception("API is down")
+
+        matches = [TextMatch(original_text="Hello", source_file=Path("f.txt"), span=(0, 5), task_name="t", extraction_rule="r")]
+
+        # Act & Assert
+        with self.assertLogs("glocaltext.translate", level="ERROR") as cm:
+            process_matches(matches, self.mock_task, self.mock_config)
+
+            assert any("Error translating batch" in log for log in cm.output)
+
+        # Assert that the match is marked with an error
+        self.mock_translator.translate.assert_called_once()
+        assert matches[0].translated_text is None
+        assert matches[0].provider == "error_gemini"
+
+
+class TestBatchCreation(unittest.TestCase):
+    """Test suite for batch creation functions."""
+
+    def setUp(self) -> None:
+        """Set up mock objects for testing batch creation."""
+        self.mock_translator = MagicMock(spec=BaseTranslator)
+
+    def test_create_simple_batches(self) -> None:
+        """1. Simple Batches: Creates batches based on size only."""
+        texts = ["a", "b", "c", "d", "e"]
+        assert _create_simple_batches(texts, SMALL_BATCH_SIZE) == [["a", "b"], ["c", "d"], ["e"]]
+        assert _create_simple_batches(texts, EQUAL_BATCH_SIZE) == [["a", "b", "c", "d", "e"]]
+        assert _create_simple_batches(texts, LARGE_BATCH_SIZE) == [["a", "b", "c", "d", "e"]]
+        assert _create_simple_batches(texts, 0) == [["a", "b", "c", "d", "e"]], "Batch size 0 should result in a single batch"
+        assert _create_simple_batches([], SMALL_BATCH_SIZE) == []
+
+    def test_create_smart_batches_tpm_limit(self) -> None:
+        """2. Smart Batches: Creates batches respecting TPM limits."""
+        texts = ["text1", "text2", "text3"]
+        # Each text is 50 tokens, TPM is 100. So, batches should be [text1, text2], [text3]
+        self.mock_translator.count_tokens.side_effect = lambda texts, _prompts: len(texts) * TOKENS_PER_TEXT_LIGHT
+
+        batches = _create_smart_batches(self.mock_translator, texts, batch_size=EQUAL_BATCH_SIZE, tpm=TPM_LIMIT, prompts=None)
+
+        assert len(batches) == SMALL_BATCH_SIZE
+        assert batches[0] == ["text1", "text2"]
+        assert batches[1] == ["text3"]
+
+    def test_create_smart_batches_batch_size_limit(self) -> None:
+        """3. Smart Batches: Creates batches respecting batch_size limits."""
+        texts = ["t1", "t2", "t3"]
+        # Each text is 10 tokens, TPM is 100, batch_size is 2.
+        self.mock_translator.count_tokens.side_effect = lambda texts, _prompts: len(texts) * TOKENS_PER_TEXT_SIMPLE
+
+        batches = _create_smart_batches(self.mock_translator, texts, batch_size=SMALL_BATCH_SIZE, tpm=TPM_LIMIT, prompts=None)
+
+        assert len(batches) == SMALL_BATCH_SIZE
+        assert batches[0] == ["t1", "t2"]
+        assert batches[1] == ["t3"]
+
+    @patch("glocaltext.translate.logger")
+    def test_log_oversized_batch_warning(self, mock_logger: MagicMock) -> None:
+        """4. Oversized Warning: Logs a warning for a single item exceeding TPM."""
+        # A single text of 150 tokens, with a TPM of 100.
+        self.mock_translator.count_tokens.return_value = TOKENS_FOR_OVERSIZED
+
+        _log_oversized_batch_warning(self.mock_translator, ["oversized text"], tpm=TPM_LIMIT, prompts=None)
+
+        mock_logger.warning.assert_called_once()
+        assert "exceeds the TPM limit" in mock_logger.warning.call_args[0][0]
+
+    def test_create_batches_delegation(self) -> None:
+        """5. Batch Dispatch: Delegates to simple or smart batching correctly."""
+        texts = ["a", "b", "c"]
+        provider_settings = ProviderSettings(batch_options=BatchOptions(enabled=True), tpm=TPM_LIMIT)
+        self.mock_translator.settings = provider_settings
+
+        # With TPM, should use smart batching
+        with patch("glocaltext.translate._create_smart_batches") as mock_smart:
+            _create_batches(self.mock_translator, texts, batch_size=EQUAL_BATCH_SIZE, tpm=TPM_LIMIT, prompts=None)
+            mock_smart.assert_called_once()
+
+        # Without TPM, should use simple batching
+        with patch("glocaltext.translate._create_simple_batches") as mock_simple:
+            _create_batches(self.mock_translator, texts, batch_size=EQUAL_BATCH_SIZE, tpm=None, prompts=None)
+            mock_simple.assert_called_once()

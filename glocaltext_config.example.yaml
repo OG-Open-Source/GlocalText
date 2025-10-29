@@ -23,6 +23,21 @@ providers:
     # rpd: 100000 # Requests per day limit
     # batch_size: 10 # Number of texts to batch into a single API call
 
+  gemma:
+    # API key will be read from here first.
+    # If not provided, it will fall back to the GEMMA_API_KEY environment variable.
+    # api_key: GEMMA_API_KEY
+    # model: "gemma-3-27b-it" # Optional, defaults to a provider-specific model
+    # Optional: Retry settings for handling API rate limits
+    # retry_attempts: 3 # Optional, defaults to 3
+    # retry_delay: 1.0 # Optional, defaults to 1.0
+    # retry_backoff_factor: 2.0 # Optional, defaults to 2.0
+    # Optional: Intelligent scheduling and batching parameters
+    # rpm: 30 # Requests per minute limit
+    # tpm: 15000 # Tokens per minute limit
+    # rpd: 14400 # Requests per day limit
+    # batch_size: 10 # Number of texts to batch into a single API call
+
     # ===================================================================
     # 2. Translation Tasks
     # ===================================================================
@@ -30,6 +45,7 @@ providers:
 tasks:
 - name: "Translate Markdown Docs to Traditional Chinese"
   enabled: true
+  translator: "gemini"
   source_lang: "en"
   target_lang: "zh-TW"
 

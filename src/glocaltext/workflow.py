@@ -35,7 +35,7 @@ def _get_task_cache_path(files: list[Path], task: TranslationTask) -> Path:
 
     manual_cache_path_cwd = Path.cwd() / CACHE_FILE_NAME
     if manual_cache_path_cwd.exists():
-        logger.info("Found manual cache file at: %s", manual_cache_path_cwd)
+        logger.debug("Found manual cache file at: %s", manual_cache_path_cwd)
         return manual_cache_path_cwd
 
     if not files:
@@ -180,7 +180,7 @@ def capture_text_matches(task: TranslationTask, config: GlocalConfig, files_to_p
             logger.info("Debug log saved to %s", log_file)
         else:
             for msg in debug_messages:
-                logger.info(msg)
+                logger.debug(msg)
     return all_matches
 
 
@@ -423,7 +423,7 @@ def _phase_1_capture(task: TranslationTask, config: GlocalConfig) -> tuple[list[
 def _phase_2_apply_terminating_rules(all_matches: list[TextMatch], task: TranslationTask) -> tuple[list[TextMatch], list[TextMatch]]:
     """Phase 2: Apply terminating rules (e.g., skip, replace) to filter matches."""
     remaining_matches, terminated_matches = apply_terminating_rules(all_matches, task)
-    logger.info(
+    logger.debug(
         "Task '%s': %d matches handled by terminating rules.",
         task.name,
         len(terminated_matches),
@@ -483,20 +483,20 @@ def _phase_3_check_cache(
     Its sole responsibility is to orchestrate the cache check.
     """
     if not task.incremental:
-        logger.info("Task '%s': Running in full translation mode (cache is ignored).", task.name)
+        logger.debug("Task '%s': Running in full translation mode (cache is ignored).", task.name)
         return remaining_matches, []
 
-    logger.info("Task '%s': Running in incremental mode. Checking cache...", task.name)
+    logger.debug("Task '%s': Running in incremental mode. Checking cache...", task.name)
     cache_path = _get_task_cache_path(files_to_process, task)
     cache = load_cache(cache_path, task.name)
-    logger.info("Loaded %d items from cache for task '%s'.", len(cache), task.name)
+    logger.debug("Loaded %d items from cache for task '%s'.", len(cache), task.name)
 
     matches_to_translate, cached_matches = _partition_matches_by_cache(remaining_matches, cache)
 
     # To provide an accurate log, count the unique texts that need translation.
     unique_texts_count = len({m.original_text for m in matches_to_translate})
 
-    logger.info("Found %d cached translations (including rule-based).", len(cached_matches))
+    logger.debug("Found %d cached translations (including rule-based).", len(cached_matches))
     logger.info("%d unique texts require new translation.", unique_texts_count)
     return matches_to_translate, cached_matches
 
@@ -523,7 +523,7 @@ def _phase_5_update_cache(
     matches_to_cache = [m for m in matches_translated if m.translated_text is not None and m.provider not in ("cached", "rule", "skipped")]
     if matches_to_cache:
         cache_path = _get_task_cache_path(files_to_process, task)
-        logger.info("Updating cache with %d new, API-translated items.", len(matches_to_cache))
+        logger.debug("Updating cache with %d new, API-translated items.", len(matches_to_cache))
         update_cache(cache_path, task.name, matches_to_cache)
 
 
