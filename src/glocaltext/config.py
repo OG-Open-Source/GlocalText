@@ -89,6 +89,52 @@ def _apply_shortcuts(task_config: dict[str, Any], shortcuts: dict[str, Any]) -> 
     return final_config
 
 
+def _deep_merge_with_list_append(source: dict[str, Any], destination: dict[str, Any]) -> dict[str, Any]:
+    """
+    Deeply merge two dictionaries.
+
+    - Dictionaries are merged recursively.
+    - Lists are combined (source items are prepended).
+    - Other types from source overwrite destination.
+    """
+    merged = copy.deepcopy(destination)
+    for key, value in source.items():
+        dest_value = merged.get(key)
+        if isinstance(value, dict) and isinstance(dest_value, dict):
+            merged[key] = _deep_merge_with_list_append(value, dest_value)
+        elif isinstance(value, list) and isinstance(dest_value, list):
+            # Prepend source list to destination to give it priority
+            merged[key] = value + dest_value
+        else:
+            merged[key] = copy.deepcopy(value)
+    return merged
+
+
+def _resolve_rules_extends(rules_data: dict[str, Any], shortcuts: dict[str, Any]) -> dict[str, Any]:
+    """Resolve the 'extends' key within a 'rules' block and merge the rules."""
+    if not isinstance(rules_data, dict) or "extends" not in rules_data:
+        return rules_data
+
+    # Make a copy to avoid modifying the original shortcut dicts
+    rules_data = copy.deepcopy(rules_data)
+
+    extended_aliases = rules_data.pop("extends", [])
+    if isinstance(extended_aliases, str):
+        extended_aliases = [extended_aliases]
+
+    final_rules: dict[str, Any] = {}
+    # Merge from the base of the chain up
+    for alias in extended_aliases:
+        shortcut_config = shortcuts.get(alias, {})
+        shortcut_rules = shortcut_config.get("rules", {})
+        # Recursively resolve extends in the parent first
+        resolved_shortcut_rules = _resolve_rules_extends(shortcut_rules, shortcuts)
+        final_rules = _deep_merge_with_list_append(resolved_shortcut_rules, final_rules)
+
+    # Finally, merge the task-specific rules, which have the highest priority
+    return _deep_merge_with_list_append(rules_data, final_rules)
+
+
 def _parse_simple_action_rules(patterns: str | list[str] | None, action_type: Literal["skip", "protect"]) -> list[Rule]:
     """Parse simple action rules (skip, protect) from a string or list."""
     if not patterns:
@@ -186,7 +232,8 @@ def _create_tasks_from_config(
         config = _apply_shortcuts(task_data, resolved_shortcuts)
 
         rules_data = config.get("rules", {})
-        config["rules"] = _parse_rules(rules_data)
+        resolved_rules = _resolve_rules_extends(rules_data, resolved_shortcuts)
+        config["rules"] = _parse_rules(resolved_rules)
 
         source_val = config.get("source")
         if isinstance(source_val, str):
@@ -241,6 +288,29 @@ def _build_providers_from_dict(providers_data: dict[str, Any]) -> dict[str, Prov
     return providers
 
 
+class StrictSingleQuoteLoader(yaml.SafeLoader):
+    """
+    A custom YAML loader that enforces the use of single quotes for all strings.
+
+    It raises an error if any double-quoted strings are found.
+    """
+
+
+def _construct_scalar(loader: StrictSingleQuoteLoader, node: yaml.ScalarNode) -> Any:  # noqa: ANN401
+    """Construct a scalar node, but first check its style."""
+    if node.style == '"':
+        # Get line and column information for a helpful error message
+        line = node.start_mark.line + 1
+        col = node.start_mark.column + 1
+        msg = f"Double-quoted string found at line {line}, column {col}. Please use single quotes (') instead."
+        raise yaml.YAMLError(msg)
+    return loader.construct_scalar(node)
+
+
+# Add the custom constructor to the loader
+StrictSingleQuoteLoader.add_constructor("tag:yaml.org,2002:str", _construct_scalar)
+
+
 def load_config(config_path: str) -> GlocalConfig:
     """
     Load, parse, and validate the YAML configuration file.
@@ -268,7 +338,7 @@ def load_config(config_path: str) -> GlocalConfig:
 
     try:
         with path.open(encoding="utf-8") as f:
-            data = yaml.safe_load(f)
+            data = yaml.load(f, Loader=StrictSingleQuoteLoader)  # noqa: S506
 
         if not isinstance(data, dict):
             _raise_type_error("Config file must be a YAML mapping (dictionary).")

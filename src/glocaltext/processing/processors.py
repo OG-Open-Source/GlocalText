@@ -204,7 +204,8 @@ def _load_cache(cache_path: Path, task_name: str) -> dict[str, str]:
         logger.debug("Cache file not found.")
         return {}
     try:
-        with cache_path.open(encoding="utf-8") as f:
+        # Open in binary mode and let json.load handle decoding from UTF-8 (with BOM support)
+        with cache_path.open("rb") as f:
             full_cache = json.load(f)
         task_cache = full_cache.get(task_name, {})
         logger.debug("Loaded %d items from cache for task '%s'.", len(task_cache), task_name)
@@ -277,6 +278,27 @@ class TranslationProcessor(Processor):
 
     def process(self, context: ExecutionContext) -> None:
         """Translate texts using an external API, unless in dry-run mode."""
+        # Filter out empty or whitespace-only matches before translation.
+        # These are matches that were not handled by any terminating rules.
+        valid_matches = []
+        empty_matches = []
+        for match in context.matches_to_translate:
+            # The text to consider is the original text, as pre-processing only handles 'protect'.
+            text_to_check = match.original_text
+            if text_to_check and text_to_check.strip():
+                valid_matches.append(match)
+            else:
+                empty_matches.append(match)
+
+        if empty_matches:
+            logger.info("Discarding %d empty or whitespace-only matches before translation.", len(empty_matches))
+            for match in empty_matches:
+                match.provider = "skipped:empty"
+            context.terminated_matches.extend(empty_matches)
+
+        # The context for the rest of this processor is now only the valid matches.
+        context.matches_to_translate = valid_matches
+
         if context.task.source_lang == context.task.target_lang:
             logger.info(
                 "Source and target languages are the same ('%s'). Skipping API translation.",
@@ -317,13 +339,12 @@ def _update_cache(cache_path: Path, task_name: str, matches_to_cache: list[TextM
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         full_cache: dict[str, dict[str, str]] = {}
         if cache_path.exists():
-            with cache_path.open(encoding="utf-8") as f:
-                try:
-                    content = f.read()
-                    if content.strip():
-                        full_cache = json.loads(content)
-                except json.JSONDecodeError:
-                    logger.warning("Cache file %s is corrupted. A new one will be created.", cache_path)
+            try:
+                # Open in binary mode to let json.load handle BOMs and encoding.
+                with cache_path.open("rb") as f:
+                    full_cache = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                logger.warning("Cache file %s is corrupted or unreadable. A new one will be created.", cache_path)
 
         task_cache = full_cache.get(task_name, {})
         new_entries = {calculate_checksum(match.original_text): match.translated_text for match in matches_to_cache if match.translated_text is not None}
@@ -331,6 +352,7 @@ def _update_cache(cache_path: Path, task_name: str, matches_to_cache: list[TextM
         if new_entries:
             task_cache.update(new_entries)
             full_cache[task_name] = task_cache
+            # Always write with UTF-8
             with cache_path.open("w", encoding="utf-8") as f:
                 json.dump(full_cache, f, ensure_ascii=False, indent=4)
     except OSError:

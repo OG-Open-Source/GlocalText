@@ -68,7 +68,7 @@ class DryRunReporter:
         """Build the text lifecycle tracking section."""
         return (
             "## 🔄 Text Lifecycle Tracking\n\n"
-            + self._format_match_section("Replaced by Rule", [m for m in context.terminated_matches if m.provider == "rule"])
+            + self._format_match_section("Replaced by Rule", [m for m in context.terminated_matches if m.provider and m.provider.startswith("rule")])
             + self._format_match_section("Skipped by Rule", [m for m in context.terminated_matches if m.provider == "skipped"])
             + self._format_match_section("Found in Cache", context.cached_matches)
             + self._format_match_section("Would be Translated", context.matches_to_translate)

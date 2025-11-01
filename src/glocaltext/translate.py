@@ -124,7 +124,7 @@ def _handle_replace_action(text: str, matched_value: str, rule: Rule) -> str:
         logger.warning("Invalid regex substitution with pattern '%s': %s", matched_value, e)
         return text
     else:
-        logger.debug("Text replaced via regex: '%s' -> '%s'", text, modified_text)
+        logger.debug("Text replaced: '%s' -> '%s'", text, modified_text)
         return modified_text
 
 
@@ -187,10 +187,9 @@ def _apply_pre_processing_rules(original_text: str, matches: list[TextMatch], ta
     text_to_process = original_text
     protected_map: dict[str, str] = {}
 
-    # 'replace' now functions as 'modify' did, so we process it here.
-    # Terminating 'replace' rules (that replace the whole match) are handled later.
-    # This logic assumes rules are applied in order.
-    pre_processing_rules = [r for r in task.rules if r.action.action in ("replace", "protect")]
+    # 'replace' rules are now terminating and handled separately.
+    # This function now only handles 'protect' rules.
+    pre_processing_rules = [r for r in task.rules if r.action.action == "protect"]
     for rule in pre_processing_rules:
         # We pass a copy of matches to avoid modifying the original list in this loop
         text_to_process, _ = _handle_rule_action(text_to_process, list(matches), rule, protected_map)
@@ -199,7 +198,7 @@ def _apply_pre_processing_rules(original_text: str, matches: list[TextMatch], ta
 
 
 def _is_match_terminated(match: TextMatch, rules: list[Rule]) -> bool:
-    """Check if a match should be terminated by any of the given rules."""
+    """Check if a match should be terminated by a 'skip' or 'replace' rule."""
     text_to_process = match.original_text
     for rule in rules:
         match_found, matched_value = _check_rule_match(text_to_process, rule)
@@ -208,13 +207,15 @@ def _is_match_terminated(match: TextMatch, rules: list[Rule]) -> bool:
 
         action = rule.action.action
         if action == "skip":
-            _handle_skip_action([match])
+            _handle_skip_action([match])  # This sets the provider to "skipped"
             return True
 
         if action == "replace":
-            temp_text = _handle_replace_action(text_to_process, matched_value, rule)
-            if temp_text == "":
-                match.provider = "rule:replace_empty"
+            modified_text = _handle_replace_action(text_to_process, matched_value, rule)
+            # A replacement is terminating if it actually changes the text.
+            if modified_text != text_to_process:
+                match.translated_text = modified_text
+                match.provider = "rule:replace"
                 return True
     return False
 

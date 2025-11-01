@@ -76,15 +76,15 @@ This section is where you configure the settings for different translation provi
     -   `batch_size`: Number of concurrent requests.
 -   **`gemma`**: Settings for Google's Gemma models.
 -   **`google`**: Settings for the Google Translate API.
--   **`mock`**: A mock translator for testing, which simulates translation by prefixing strings (e.g., `en-US: Hello` -> `mock-ja: Hello`).
+-   **`mock`**: A mock translator for testing, which simulates translation by prefixing strings (e.g., `Hello` -> `[MOCK] Hello`).
 
 **Example:**
 
 ```yaml
 providers:
     gemini:
-        api_key: "YOUR_GEMINI_API_KEY"
-        model: "gemini-2.5-flash-lite"
+        api_key: 'YOUR_GEMINI_API_KEY'
+        model: 'gemini-2.5-flash-lite'
         rpm: 60 # Requests per minute
         tpm: 1000000 # Tokens per minute
         batch_size: 20
@@ -92,30 +92,35 @@ providers:
 
 ### 2. `shortcuts`
 
-Shortcuts are reusable configuration blocks defined using YAML anchors (`&`). They help keep your tasks DRY (Don't Repeat Yourself). You can define a default set of options and extend it in other shortcuts or tasks.
+Shortcuts are reusable configuration blocks that help keep your tasks DRY (Don't Repeat Yourself). You can define a block of settings and then inherit from it in other shortcuts or tasks using the `extends` key.
 
--   Use `&<name>` to define a shortcut.
--   Use `*<name>` to reference a shortcut.
--   Use `<<: *<name>` to inherit and merge a shortcut's key-value pairs.
+-   **`.defaults`**: A special shortcut that is automatically inherited by **all** tasks.
+-   **Custom Shortcuts**: You can define any other shortcut (e.g., `.scripts`) and inherit from it explicitly.
+-   **`extends`**: Use this key to specify which shortcut to inherit from.
 
 **Example:**
 
 ```yaml
 shortcuts:
-    # A default set of options
-    .defaults: &defaults
-        translator: "gemini"
-        source_lang: "en"
+    # 1. A default set of options automatically applied to all tasks.
+    .defaults:
+        translator: 'gemini'
+        source_lang: 'en'
         incremental: true
-        cache_path: "path/to/cache_file"
+        # This should be a directory path. A cache file will be created inside it.
+        cache_path: 'path/to/cache_dir'
 
-    # A shortcut for shell scripts that inherits from .defaults
-    .scripts: &scripts
-        <<: *defaults # Inherit all keys from &defaults
+    # 2. A reusable ruleset for protecting variables.
+    .script_rules:
+        rules:
+            protect:
+                - '\$\w+' # Protects $VAR
+
+    # 3. A shortcut for shell scripts that inherits from .defaults.
+    .scripts:
+        extends: '.defaults'
         source:
-            include: ["**/*.sh", "**/*.ps1"]
-        extraction_rules:
-            - 'echo "([^"]*)"'
+            include: ['**/*.sh', '**/*.ps1']
 ```
 
 ### 3. `tasks`
@@ -126,7 +131,7 @@ This is the core section where you define the list of translation jobs. Each ite
 
 -   `name`: A descriptive name for the task.
 -   `enabled`: Set to `true` or `false` to enable or disable the task.
--   `<<: *shortcut_name`: Inherit settings from a defined shortcut.
+-   `extends`: Inherit settings from a defined shortcut (e.g., `extends: .scripts`). This can also be used inside a `rules` block to inherit from a ruleset.
 -   `target_lang`: The language to translate to (e.g., `"zh-TW"`, `"ja"`).
 -   `source`: Specifies which files to include or exclude.
     -   `include`: A list of glob patterns for files to process.
@@ -137,7 +142,7 @@ This is the core section where you define the list of translation jobs. Each ite
     -   `path`: The directory to save translated files.
     -   `filename`: A pattern for the output filename. Supports placeholders:
         -   `{stem}`: The original filename without the extension.
-        -   `{ext}`: The original file extension.
+        -   `{source_lang}`: The source language code.
         -   `{target_lang}`: The target language code.
 -   `prompts`: (For AI-based translators like Gemini) Custom prompts to guide the translation.
     -   `system`: A system prompt to set the context for the AI (e.g., "You are a professional translator...").
@@ -148,7 +153,7 @@ The `rules` key allows for fine-grained control over the translation of extracte
 
 -   `protect`: A list of regex patterns. Any text matching these patterns (e.g., variables like `$VAR` or `${VAR}`) will be protected from being sent to the translator.
 -   `skip`: A list of regex patterns. If an entire string matches one of these patterns, it will be skipped and not translated.
--   `replace`: A dictionary of find-and-replace pairs where the key is the pattern to find and the value is the replacement string. This is a powerful **pre-processing** action that performs a substitution on the text _before_ it is evaluated by other rules or sent to the translator. It fully supports Regex capture groups and backreferences (e.g., `\\1`, `\\2`), making it ideal for complex text manipulation or providing authoritative translations for specific patterns.
+-   `replace`: A dictionary of find-and-replace pairs where the key is the pattern to find and the value is the replacement string. This is a powerful **pre-processing** action that performs a substitution on the text _before_ it is evaluated by other rules or sent to the translator. It fully supports Regex capture groups and backreferences (e.g., `\1`, `\2`), making it ideal for complex text manipulation or providing authoritative translations for specific patterns.
 
     **Example**: To automatically format a user tag before translation, you can add a `replace` rule. The example below finds "User: " followed by any characters, captures those characters, and replaces the string with a formatted Chinese version while keeping the original user identifier.
 
@@ -156,84 +161,88 @@ The `rules` key allows for fine-grained control over the translation of extracte
     # In a task within the config file:
     rules:
         replace:
-            # Replaces "User: <name>" with "使用者: <name>" before translation.
-            # The \\1 is a backreference to the first capture group (.*).
-            "User: (.*)": "使用者: \\1"
+            # Replaces 'User: <name>' with '使用者: <name>' before translation.
+            # The \1 is a backreference to the first capture group (.*).
+            # Note the use of single quotes to avoid issues with YAML escape sequences.
+            'User: (.*)': '使用者: \1'
     ```
 
-### 4. System-Wide Settings
+    **Inheriting Rulesets**: You can also inherit a complete set of rules from a shortcut. This is useful for applying a standard set of rules (like protecting variables) across multiple tasks.
 
--   `debug_options`: Configure logging for debugging purposes.
--   `report_options`: Configure translation run reports.
+    ```yaml
+    shortcuts:
+        .script_rules:
+            rules:
+                protect:
+                    - '\$\w+' # Protects $VAR
+
+    tasks:
+        - name: 'Translate Scripts'
+        extends: '.defaults'
+        # ... other task settings
+        rules:
+            extends: '.script_rules' # Inherit all rules from .script_rules
+            skip:
+                - 'Do not translate this line' # Add a task-specific rule
+    ```
 
 ### Comprehensive Task Example
 
-This example defines a task to translate Markdown documentation into Japanese. It inherits from the `.defaults` shortcut, specifies source and output paths, and provides a custom system prompt for the AI translator.
+This example defines a task to translate Markdown documentation into Japanese. It inherits from `.defaults`, specifies source and output paths, and provides a custom system prompt for the AI translator.
 
 ```yaml
 # ==============================================================================
 # GlocalText Configuration File
 # ==============================================================================
 
-project_root: "."
+project_root: '.'
 
 # ------------------------------------------------------------------------------
 #  1. Provider Settings
 # ------------------------------------------------------------------------------
 providers:
     gemini:
-        api_key: "YOUR_GEMINI_API_KEY"
-        model: "gemini-2.5-flash-lite"
+        api_key: 'YOUR_GEMINI_API_KEY'
+        model: 'gemini-2.5-flash-lite'
 
 # ------------------------------------------------------------------------------
 #  2. Shortcuts: For reusable configuration
 # ------------------------------------------------------------------------------
 shortcuts:
-    .defaults: &defaults
-        translator: "gemini"
-        source_lang: "en"
+    .defaults:
+        translator: 'gemini'
+        source_lang: 'en'
         incremental: true
-        cache_path: ".glocaltext_cache"
+        cache_path: '.glocaltext_cache'
 
 # ------------------------------------------------------------------------------
 #  3. Tasks: The core translation jobs
 # ------------------------------------------------------------------------------
 tasks:
-    - name: "Translate Markdown Docs to Japanese"
+    - name: 'Translate Markdown Docs to Japanese'
       enabled: true
-      <<: *defaults # Inherit from the defaults shortcut
-      target_lang: "ja"
+      extends: '.defaults' # Inherit from the defaults shortcut
+      target_lang: 'ja'
       source:
-          include: ["docs/**/*.md"]
-          exclude: ["docs/internal/**"]
+          include: ['docs/**/*.md']
+          exclude: ['docs/internal/**']
       extraction_rules:
           # Extract text from within backticks
-          - "`([^`]+)`"
+          - '`([^`]+)`'
       rules:
           protect:
               # Protect code blocks and variables
-              - "`[^`]+`"
+              - '`[^`]+`'
               - '\w+\.\w+'
           skip:
               # Don't translate version numbers
               - '^v\d+\.\d+\.\d+$'
       output:
           in_place: false
-          path: "output/ja" # Place translated files in output/ja/
-          filename: "{stem}.{target_lang}.md" # e.g., my_doc.ja.md
+          path: 'output/ja' # Place translated files in output/ja/
+          filename: '{stem}.{target_lang}.md' # e.g., my_doc.ja.md
       prompts:
-          system: "You are a professional translator specializing in technical documentation for a software project. Translate with a formal and clear tone."
-
-# ------------------------------------------------------------------------------
-#  4. System-Wide Settings
-# ------------------------------------------------------------------------------
-debug_options:
-    enabled: false
-    log_path: "logs/glocaltext_debug.log"
-
-report_options:
-    enabled: true
-    export_dir: "reports"
+          system: 'You are a professional translator specializing in technical documentation for a software project. Translate with a formal and clear tone.'
 ```
 
 ## Usage
@@ -241,7 +250,7 @@ report_options:
 ### Command-Line Options
 
 -   `-c <path>`, `--config <path>`: Specifies the path to your `glocaltext_config.yaml` file. Defaults to `glocaltext_config.yaml` in the current directory.
--   `--verbose`: Enables verbose (DEBUG level) logging to the console and creates a `glocaltext_debug.log` file in the current directory.
+-   `--debug`: Enables debug level logging.
 -   `--incremental`: Overrides all task-level settings to run in incremental mode, translating only new or modified content.
 -   `--dry-run`: Performs a full run without making any actual changes or API calls. This is useful for testing your configuration and seeing what text will be translated.
 
