@@ -1,9 +1,17 @@
 """Defines the base class for all translators."""
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 from glocaltext.config import ProviderSettings
-from glocaltext.models import TranslationResult
+
+
+@dataclass
+class TranslationResult:
+    """Represents the result of a single translation."""
+
+    translated_text: str
+    tokens_used: int | None = None
 
 
 class BaseTranslator(ABC):

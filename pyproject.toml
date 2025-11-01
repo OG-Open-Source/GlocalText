@@ -1,13 +1,13 @@
 [tool.poetry]
 name = "GlocalText"
-version = "3.4.0"
+version = "4.0.0a1"
 description = "A config-driven script to batch translate files using various providers."
 authors = ["OG-Open-Source"]
 license = "MIT"
 readme = "README.md"
 classifiers = [
-    "Programming Language :: Python :: 3",
-    "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
 ]
 homepage = "https://github.com/OG-Open-Source/GlocalText"
 repository = "https://github.com/OG-Open-Source/GlocalText"
@@ -45,3 +45,9 @@ line-ending = "lf"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+pythonpath = [".", "src"]
+markers = [
+  "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+]

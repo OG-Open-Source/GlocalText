@@ -1,161 +1,124 @@
+# ==============================================================================
 # GlocalText Configuration File
 #
-# This file provides a complete example of the "Firewall-Style" rules system.
-# For a detailed explanation of each parameter, please refer to the README.md file.
+# This file is the control center for all translation tasks.
+# It is structured into several key sections that define reusable components,
+# providers, and the specific tasks to be executed.
+# ==============================================================================
 
-# ===================================================================
-# 1. Provider Settings
-# ===================================================================
-# Define API keys and default parameters for translation providers.
+# (Optional) The root directory of your project. All relative paths in the
+# configuration (like in 'source' or 'output') will be resolved from here.
+# If not specified, it defaults to the directory where you run the command.
+project_root: "."
+
+# ------------------------------------------------------------------------------
+#  1. Provider Settings
+#
+#  Configure your translation providers here. You can define multiple providers
+#  and select which one to use for each task.
+# ------------------------------------------------------------------------------
 providers:
+  # Example for Google Gemini
   gemini:
-    # API key will be read from here first.
-    # If not provided, it will fall back to the GEMINI_API_KEY environment variable.
-    # api_key: GEMINI_API_KEY
-    # model: "gemini-flash-lite-latest" # Optional, defaults to "gemini-flash-lite-latest"
-    # Optional: Retry settings for handling API rate limits
-    # retry_attempts: 3 # Optional, defaults to 3
-    # retry_delay: 1.0 # Optional, defaults to 1.0
-    # retry_backoff_factor: 2.0 # Optional, defaults to 2.0
-    # Optional: Intelligent scheduling and batching parameters
-    # rpm: 5000 # Requests per minute limit
-    # tpm: 1000000 # Tokens per minute limit
-    # rpd: 100000 # Requests per day limit
-    # batch_size: 10 # Number of texts to batch into a single API call
+    # API key can be set here, but it's recommended to use environment variables
+    # (e.g., GEMINI_API_KEY) for better security.
+    api_key: "YOUR_GEMINI_API_KEY" # Or leave empty to use env var
+    model: "gemini-1.5-flash"
 
+    # Intelligent scheduling and batching settings to respect API rate limits.
+    # All are optional and have sensible defaults.
+    rpm: 60 # Requests Per Minute
+    tpm: 100000 # Tokens Per Minute
+    rpd: 1000 # Requests Per Day
+    batch_size: 20 # Number of texts to group in one API call
+
+    # Retry logic for handling transient network errors.
+    retry_attempts: 3
+    retry_delay: 1.0 # Initial delay in seconds
+    retry_backoff_factor: 2.0 # Multiplier for subsequent retries (e.g., 1s, 2s, 4s)
+
+  # Example for Google Gemma (via a local Ollama server, for instance)
   gemma:
-    # API key will be read from here first.
-    # If not provided, it will fall back to the GEMMA_API_KEY environment variable.
-    # api_key: GEMMA_API_KEY
-    # model: "gemma-3-27b-it" # Optional, defaults to a provider-specific model
-    # Optional: Retry settings for handling API rate limits
-    # retry_attempts: 3 # Optional, defaults to 3
-    # retry_delay: 1.0 # Optional, defaults to 1.0
-    # retry_backoff_factor: 2.0 # Optional, defaults to 2.0
-    # Optional: Intelligent scheduling and batching parameters
-    # rpm: 30 # Requests per minute limit
-    # tpm: 15000 # Tokens per minute limit
-    # rpd: 14400 # Requests per day limit
-    # batch_size: 10 # Number of texts to batch into a single API call
+    # For local models, the API key might be optional or a specific string.
+    # Refer to your local server's documentation.
+    api_key: "ollama"
+    model: "gemma:7b"
+    # The 'extra' field allows passing non-standard options to the provider.
+    # For Ollama, you can specify the full server URL.
+    extra:
+      base_url: "http://localhost:11434/v1"
 
-    # ===================================================================
-    # 2. Translation Tasks
-    # ===================================================================
-    # Define a list of translation jobs. Each job is a self-contained task.
+# ------------------------------------------------------------------------------
+#  2. Shortcuts & Rulesets: For reusable configuration
+# ------------------------------------------------------------------------------
+shortcuts:
+  # '.defaults' is a special shortcut that is implicitly inherited by ALL tasks.
+  .defaults: &defaults
+    translator: "gemini"
+    source_lang: "en"
+    incremental: true # Enable caching to avoid re-translating unchanged text.
+    cache_path: ".glocaltext_cache" # Optional: Specify a central cache directory.
+
+  # A custom shortcut for translating script files.
+  .scripts: &scripts
+    <<: *defaults # Inherit from .defaults
+    source:
+      include: ["**/*.sh", "**/*.ps1"]
+    extraction_rules:
+      - 'echo "([^"]*)"'
+      - "echo -e '([^']*)'"
+    rules:
+      - ruleset: shell-vars-protection # Reference a ruleset defined below.
+
+rulesets:
+  # A reusable set of rules to protect shell variables from translation.
+  shell-vars-protection:
+    - 'protect: \$\w+|\$\{\w+\}' # Protects $VAR and ${VAR}
+
+# ------------------------------------------------------------------------------
+#  3. Tasks: The core translation jobs
+# ------------------------------------------------------------------------------
 tasks:
-- name: "Translate Markdown Docs to Traditional Chinese"
+  - name: "Translate Shell Scripts to Traditional Chinese"
+    <<: *scripts # Use the .scripts shortcut
+    target_lang: "zh-TW"
+    # You can add or override settings from the shortcut.
+    rules:
+      # 'protect' rules are inherited from the shortcut.
+      # All match patterns are treated as Regex. For an exact match, use ^ and $.
+      # All 'replace' values (like in '->') support Regex backreferences (e.g., \1).
+      - 'skip: ^Don''t translate me$' # Use two single quotes to escape in YAML.
+      - '"User: (.*)" -> "使用者: \\1"' # In YAML, backslashes in quotes must be escaped.
+
+  - name: "Translate Markdown Docs to Japanese"
+    <<: *defaults # Inherit only the base settings
+    target_lang: "ja"
+    source:
+      include: ["docs/**/*.md"]
+      exclude: ["docs/internal/**"] # Exclude specific subdirectories.
+    extraction_rules:
+      - '`([^`]+)`' # Extract content from inline code blocks.
+    output:
+      in_place: false # Write to a new directory instead of modifying original files.
+      path: "output/ja"
+      # Optional: Define a custom filename structure.
+      # Placeholders: {stem}, {source_lang}, {target_lang}
+      filename: "{stem}.{target_lang}.md"
+    # Prompts can be used to add context for the AI translator.
+    prompts:
+      system: "You are a professional translator specializing in technical documentation."
+
+# ------------------------------------------------------------------------------
+#  4. System-Wide Settings
+# ------------------------------------------------------------------------------
+
+# Debug options for troubleshooting.
+debug_options:
+  enabled: false
+  log_path: "logs/glocaltext_debug.log" # Optional: Custom path for the debug log.
+
+# Reporting options for the translation summary.
+report_options:
   enabled: true
-  translator: "gemini"
-  source_lang: "en"
-  target_lang: "zh-TW"
-
-  # -----------------------------------------------------------------
-  # Custom Prompts (Optional)
-  # -----------------------------------------------------------------
-  # Override the default system and user prompts for this task.
-  # The `{text}` placeholder will be replaced with the content to translate.
-  prompts:
-    system: "You are a professional technical translator who translates English into Traditional Chinese. Your goal is to produce translations that are accurate, fluent, and adhere to the established terminology of the target context. You will be given a markdown file to translate. Preserve the original markdown formatting, including line breaks, code blocks, and other structural elements. Only translate the text content."
-    user: "Translate the following markdown text: {text}"
-
-  # -----------------------------------------------------------------
-  # Incremental Translation (Optional)
-  # -----------------------------------------------------------------
-  # Enable this to translate only new or changed content, saving time
-  # and cost. A cache file (.glocaltext_cache.json) will be created.
-  # Set to `true` to enable.
-  incremental: false
-
-  # (Optional) Override the default cache file location for this task.
-  # The path must be a directory where the .glocaltext_cache.json file will be stored.
-  # For example, to use a shared cache across multiple tasks:
-  cache_path: "path/to/your/cache_dir"
-  # -----------------------------------------------------------------
-  # File Selection
-  # -----------------------------------------------------------------
-  source:
-    include:
-    - "docs/**/*.md"
-    # exclude:
-    #   - "docs/internal/**"
-
-    # -----------------------------------------------------------------
-    # Text Extraction
-    # -----------------------------------------------------------------
-  extraction_rules:
-  - "(?<=## ).+" # Translate all H2 headers
-  - "(?<=### ).+" # Translate all H3 headers
-  - "^[A-Za-z].*" # Translate paragraphs that start with a letter
-  # -----------------------------------------------------------------
-  # Output Configuration
-  # -----------------------------------------------------------------
-  output:
-    in_place: false
-    path: "docs/zh-TW/"
-    # New: Use a template for the output filename.
-    # Available placeholders: {stem}, {ext}, {source_lang}, {target_lang}
-    # If `filename` is provided, `filename_suffix` is ignored.
-    filename: "{stem}_{target_lang}{ext}"
-    # Alternatively, you can provide a fixed filename.
-    # filename: "my-custom-output-file.md"
-    # Legacy: Suffix to append to the original filename.
-    # filename_suffix: "_zh-TW"
-
-    # -----------------------------------------------------------------
-    # Firewall Rules
-    # -----------------------------------------------------------------
-  rules:
-  # Rule 1: Protect brand names using an `exact` match.
-  # This rule skips translation if the text is exactly "GlocalText" or "Gemini".
-  - match:
-      exact: [ "GlocalText", "Gemini" ]
-    action:
-      action: "skip"
-
-  # Rule 2: Skip technical notes using a `contains` match.
-  # This rule skips translation if the text contains "NOTE:", preventing
-  # technical annotations from being translated.
-  - match:
-      contains: "NOTE:"
-    action:
-      action: "skip"
-
-  # Rule 3: Provide an authoritative translation using an `exact` match.
-  - match:
-      exact: "firewall-style `rules` system"
-    action:
-      action: "replace"
-      value: "防火牆風格的 `rules` 系統"
-
-  # Rule 4: Pre-process text with `modify` before translation.
-  # This rule finds a complex shell command and simplifies it. The modified
-  # text is then passed to the next rule or the translator.
-  - match:
-      contains: "uptime -p | sed -E 's/^up //; s/ years?/y/g; s/ months?/mo/g; s/ weeks?/w/g; s/ days?/d/g; s/ hours?/h/g; s/ minutes?/m/g; s/ seconds?/s/g; s/ +/ /g'"
-    action:
-      action: "modify"
-      value: "uptime -p | sed 's/up //'"
-
-  # Rule 5: Protect specific terms within a sentence from translation.
-  # The `protect` action ensures that certain words (e.g., brand names, variables)
-  # are not translated, while the rest of the sentence is.
-  - match:
-      contains: "GlocalText"
-    action:
-      action: "protect"
-
-  # Rule 6: Use regex for complex, multi-line matching and replacement.
-  # This rule finds a multi-line code block and replaces its content
-  # while preserving the surrounding markers.
-  - match:
-      # (?s) is a flag that makes '.' match newlines.
-      regex: '(?s)```python\n(.*?)\n```'
-    action:
-      action: "replace"
-      # The value can be a multi-line string.
-      # \1 is a backreference to the first capture group (.*?) in the regex.
-      value: |
-        ```python
-        # The original content was replaced by this rule.
-        # Original content: \1
-        print("Hello, GlocalText!")
+  export_csv: false
+  export_dir: "reports" # Directory to save the CSV report if enabled.

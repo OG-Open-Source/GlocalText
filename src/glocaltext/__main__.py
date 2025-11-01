@@ -43,21 +43,21 @@ def _parse_args() -> argparse.Namespace:
         help="Run in incremental mode, translating only new or modified content.",
     )
     parser.add_argument(
-        "--debug",
-        nargs="?",
-        const=True,
-        default=False,
-        help="Enable debug logging. Optionally provide a directory path to save the debug log file.",
+        "--verbose",
+        action="store_true",
+        help="Enable verbose (DEBUG) logging to the console.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Perform a dry run without making any actual changes or API calls.",
     )
     return parser.parse_args()
 
 
 def _load_config(args: argparse.Namespace) -> GlocalConfig | None:
     """
-    Load configuration from a file and apply command-line overrides.
-
-    This function loads the main configuration file and allows for dynamic
-    adjustments based on command-line flags, such as enabling debug mode.
+    Load configuration from a file.
 
     Args:
         args: The parsed command-line arguments.
@@ -67,25 +67,20 @@ def _load_config(args: argparse.Namespace) -> GlocalConfig | None:
 
     """
     try:
-        config = load_config(args.config)
+        return load_config(args.config)
     except FileNotFoundError:
         logger.exception("Configuration file not found at: %s", args.config)
         return None
-    else:
-        if args.debug:
-            config.debug_options.enabled = True
-            if isinstance(args.debug, str):
-                config.debug_options.log_path = args.debug
-        return config
 
 
-def _run_tasks(config: GlocalConfig, *, incremental: bool) -> list[Any]:
+def _run_tasks(config: GlocalConfig, *, incremental: bool, dry_run: bool) -> list[Any]:
     """
     Iterate over and execute all enabled translation tasks.
 
     Args:
         config: The application's configuration object.
         incremental: A flag indicating whether to run in incremental mode.
+        dry_run: A flag indicating whether to perform a dry run.
 
     Returns:
         A list of all matches found across all executed tasks.
@@ -98,7 +93,7 @@ def _run_tasks(config: GlocalConfig, *, incremental: bool) -> list[Any]:
                 task.incremental = True
             logger.info("Running Task: '%s'", task.name)
             logger.debug("Starting task '%s' with config: %s", task.name, task.model_dump_json(indent=2))
-            task_matches = run_task(task, config)
+            task_matches = run_task(task, config, dry_run=dry_run)
             all_matches.extend(task_matches)
             logger.debug("Task '%s' finished, found %d matches.", task.name, len(task_matches))
     return all_matches
@@ -118,11 +113,11 @@ def main() -> None:
 
     try:
         args = _parse_args()
-        setup_logging(version=__version__, debug=args.debug)
+        setup_logging(version=__version__, debug=args.verbose)
         config = _load_config(args)
 
         if config:
-            all_matches = _run_tasks(config, incremental=args.incremental)
+            all_matches = _run_tasks(config, incremental=args.incremental, dry_run=args.dry_run)
             generate_summary_report(all_matches, start_time, config)
 
     except Exception:

@@ -1,12 +1,14 @@
 """Translator implementation using the Google Translate API."""
 # Implementation for the Google Translate API using deep-translator
 
-from deep_translator import GoogleTranslator as DeepGoogleTranslator
+from deep_translator import GoogleTranslator as DeepGoogleTranslator  # type: ignore[import-untyped]
 
 from glocaltext.config import ProviderSettings
-from glocaltext.models import TranslationResult
 
-from .base import BaseTranslator
+from .base import BaseTranslator, TranslationResult
+
+# Define a constant for the maximum batch size to avoid magic numbers.
+_MAX_BATCH_SIZE = 10
 
 
 class GoogleTranslator(BaseTranslator):
@@ -48,6 +50,7 @@ class GoogleTranslator(BaseTranslator):
 
         Raises:
             ConnectionError: If the translation request fails.
+            NotImplementedError: If the batch size is too large for this provider.
 
         """
         _ = prompts
@@ -55,15 +58,24 @@ class GoogleTranslator(BaseTranslator):
         if not texts:
             return []
 
+        # This provider does not support true batching and can be very slow.
+        # We limit it to small batches to avoid performance issues.
+        if len(texts) > _MAX_BATCH_SIZE:
+            msg = "The 'google' provider does not support large batches. Use a GenAI provider (e.g., 'gemini') for this task."
+            raise NotImplementedError(
+                msg,
+            )
+
         try:
-            # deep-translator can handle batch translation in a single call.
+            # deep-translator's translate_batch is a loop of single requests.
             translated_texts = DeepGoogleTranslator(source=source_language or "auto", target=target_language).translate_batch(texts)
 
             results = []
-            for i, text in enumerate(texts):
-                translated = translated_texts[i] if translated_texts and i < len(translated_texts) else ""
-                tokens = len(text) // 4
-                results.append(TranslationResult(translated_text=translated or "", tokens_used=tokens))
+            if translated_texts:
+                for i, text in enumerate(texts):
+                    translated = translated_texts[i] if i < len(translated_texts) else ""
+                    tokens = len(text) // 4  # Rough estimation
+                    results.append(TranslationResult(translated_text=translated or "", tokens_used=tokens))
         except Exception as e:
             msg = f"deep-translator (Google) request failed: {e}"
             raise ConnectionError(msg) from e

@@ -8,9 +8,10 @@ from typing import Any
 import regex
 
 from .config import GlocalConfig, ProviderSettings, Rule, TranslationTask
-from .models import PreProcessedText, Provider, TextMatch, TranslationResult
+from .models import TextMatch
 from .translators import TRANSLATOR_MAPPING
-from .translators.base import BaseTranslator
+from .translators.base import BaseTranslator, TranslationResult
+from .types import PreProcessedText
 
 logger = logging.getLogger(__name__)
 
@@ -37,13 +38,12 @@ def _get_translator(provider_name: str, settings: ProviderSettings | None) -> Ba
         An initialized translator instance, or None if instantiation fails.
 
     """
-    try:
-        provider = Provider(provider_name.lower())
-    except ValueError:
+    provider_name_lower = provider_name.lower()
+    if provider_name_lower not in TRANSLATOR_MAPPING:
         logger.warning("Unknown translator provider: '%s'", provider_name)
         return None
 
-    translator_class = TRANSLATOR_MAPPING.get(provider)
+    translator_class = TRANSLATOR_MAPPING.get(provider_name_lower)
     if not translator_class:
         # This case should ideally not be hit if the enum and mapping are aligned,
         # but it's a safeguard.
@@ -74,9 +74,6 @@ def get_translator(provider_name: str, config: GlocalConfig) -> BaseTranslator |
     if provider_name in _translator_cache:
         return _translator_cache[provider_name]
 
-    # Use dictionary .get() to reliably access provider settings.
-    # The previous `getattr` approach failed because `config.providers` is a
-    # dictionary, not an object where keys can be accessed as attributes.
     provider_settings = config.providers.get(provider_name)
     if provider_settings is None:
         msg = f"Provider '{provider_name}' is not configured in your settings file."
@@ -91,53 +88,8 @@ def get_translator(provider_name: str, config: GlocalConfig) -> BaseTranslator |
     return translator
 
 
-def _check_exact_match(text: str, rule: Rule) -> tuple[bool, str | None]:
-    """
-    Check if the text exactly matches one of the conditions in the rule.
-
-    Args:
-        text: The text to check.
-        rule: The rule containing the match conditions.
-
-    Returns:
-        A tuple containing a boolean indicating if a match was found,
-        and the matched value if found.
-
-    """
-    if not rule.match.exact:
-        return False, None
-    conditions = [rule.match.exact] if isinstance(rule.match.exact, str) else rule.match.exact
-    if text in conditions:
-        return True, text
-    return False, None
-
-
-def _check_contains_match(text: str, rule: Rule) -> tuple[bool, str | None]:
-    """
-    Check if the text contains one of the substrings specified in the rule.
-
-    Args:
-        text: The text to check.
-        rule: The rule containing the match conditions.
-
-    Returns:
-        A tuple containing a boolean indicating if a match was found,
-        and the matched value if found.
-
-    """
-    if not rule.match.contains:
-        return False, None
-    conditions = [rule.match.contains] if isinstance(rule.match.contains, str) else rule.match.contains
-    for c in conditions:
-        if c in text:
-            return True, c
-    return False, None
-
-
-def _check_regex_match(text: str, rule: Rule) -> tuple[bool, str | None]:
-    """Check for a regex match."""
-    if not rule.match.regex:
-        return False, None
+def _check_rule_match(text: str, rule: Rule) -> tuple[bool, str | None]:
+    """Check if a text matches a given rule's regex pattern."""
     conditions = [rule.match.regex] if isinstance(rule.match.regex, str) else rule.match.regex
     for r in conditions:
         try:
@@ -148,66 +100,32 @@ def _check_regex_match(text: str, rule: Rule) -> tuple[bool, str | None]:
     return False, None
 
 
-def _check_rule_match(text: str, rule: Rule) -> tuple[bool, str | None]:
-    """Check if a text matches a given rule by delegating to specific match-type functions."""
-    is_match, matched_value = _check_exact_match(text, rule)
-    if is_match:
-        return True, matched_value
-
-    is_match, matched_value = _check_contains_match(text, rule)
-    if is_match:
-        return True, matched_value
-
-    is_match, matched_value = _check_regex_match(text, rule)
-    if is_match:
-        return True, matched_value
-
-    return False, None
-
-
-def _handle_skip_action(matches: list[TextMatch], rule: Rule, text: str) -> bool:
-    if rule.match.exact and text != matches[0].original_text:
-        match_found_orig, _ = _check_rule_match(matches[0].original_text, rule)
-        if not match_found_orig:
-            return False
+def _handle_skip_action(matches: list[TextMatch]) -> bool:
+    """Mark all matches as skipped."""
     for match in matches:
         match.provider = "skipped"
     return True
 
 
-def _handle_replace_action(matches: list[TextMatch], rule: Rule) -> bool:
-    for match in matches:
-        match.translated_text = rule.action.value
-        match.provider = "rule"
-    return True
+def _handle_replace_action(text: str, matched_value: str, rule: Rule) -> str:
+    """
+    Replace text using regex substitution, supporting backreferences.
 
-
-def _handle_modify_action(text: str, matched_value: str, rule: Rule) -> str:
+    This function handles all 'replace' actions, including those parsed
+    from the '->' syntax.
+    """
     if rule.action.value is None:
+        return text  # Should not happen due to pydantic validation
+
+    try:
+        # regex.sub correctly handles backreferences like \1, \g<name>, etc.
+        modified_text = regex.sub(matched_value, rule.action.value, text, regex.DOTALL)
+    except regex.error as e:
+        logger.warning("Invalid regex substitution with pattern '%s': %s", matched_value, e)
         return text
-    if rule.match.regex:
-        try:
-            modified_text = regex.sub(matched_value, rule.action.value, text, regex.DOTALL)
-        except regex.error as e:
-            logger.warning("Invalid regex substitution with pattern '%s': %s", matched_value, e)
-            return text
-        else:
-            logger.debug("Text modified by regex rule: '%s' -> '%s'", text, modified_text)
-            return modified_text
-    modified_text = text.replace(matched_value, rule.action.value)
-    logger.debug("Text modified by rule: '%s' -> '%s'", text, modified_text)
-    return modified_text
-
-
-def _apply_simple_protection(text: str, matched_value: str, protected_map: dict[str, str]) -> str:
-    """Apply protection for 'exact' and 'contains' matches."""
-    if matched_value not in protected_map.values():
-        placeholder_key = f"__PROTECT_{len(protected_map)}__"
-        protected_map[placeholder_key] = matched_value
-        logger.debug("Protected text: '%s' replaced with '%s'", matched_value, placeholder_key)
-
-    placeholder = next((k for k, v in protected_map.items() if v == matched_value), None)
-    return text.replace(matched_value, placeholder) if placeholder else text
+    else:
+        logger.debug("Text replaced via regex: '%s' -> '%s'", text, modified_text)
+        return modified_text
 
 
 def _apply_regex_protection(text: str, matched_value: str, protected_map: dict[str, str]) -> str:
@@ -234,11 +152,9 @@ def _apply_regex_protection(text: str, matched_value: str, protected_map: dict[s
         return new_text
 
 
-def _apply_protection(text: str, matched_value: str, rule: Rule, protected_map: dict[str, str]) -> str:
+def _apply_protection(text: str, matched_value: str, protected_map: dict[str, str]) -> str:
     """Apply protection to the text based on the rule's matched value."""
-    if rule.match.regex:
-        return _apply_regex_protection(text, matched_value, protected_map)
-    return _apply_simple_protection(text, matched_value, protected_map)
+    return _apply_regex_protection(text, matched_value, protected_map)
 
 
 def _handle_rule_action(
@@ -256,13 +172,13 @@ def _handle_rule_action(
     is_handled = False
 
     if action == "skip":
-        is_handled = _handle_skip_action(matches, rule, text)
+        is_handled = _handle_skip_action(matches)
     elif action == "replace":
-        is_handled = _handle_replace_action(matches, rule)
-    elif action == "modify":
-        text = _handle_modify_action(text, matched_value, rule)
+        # Since 'replace' now handles regex, it's a text modification, not a final assignment.
+        # The final assignment happens in the calling context if needed.
+        text = _handle_replace_action(text, matched_value, rule)
     elif action == "protect":
-        text = _apply_protection(text, matched_value, rule, protected_map)
+        text = _apply_protection(text, matched_value, protected_map)
 
     return text, is_handled
 
@@ -271,13 +187,13 @@ def _apply_pre_processing_rules(original_text: str, matches: list[TextMatch], ta
     text_to_process = original_text
     protected_map: dict[str, str] = {}
 
-    modify_rules = [r for r in task.rules if r.action.action == "modify"]
-    for rule in modify_rules:
-        text_to_process, _ = _handle_rule_action(text_to_process, matches, rule, protected_map)
-
-    protect_rules = [r for r in task.rules if r.action.action == "protect"]
-    for rule in protect_rules:
-        text_to_process, _ = _handle_rule_action(text_to_process, matches, rule, protected_map)
+    # 'replace' now functions as 'modify' did, so we process it here.
+    # Terminating 'replace' rules (that replace the whole match) are handled later.
+    # This logic assumes rules are applied in order.
+    pre_processing_rules = [r for r in task.rules if r.action.action in ("replace", "protect")]
+    for rule in pre_processing_rules:
+        # We pass a copy of matches to avoid modifying the original list in this loop
+        text_to_process, _ = _handle_rule_action(text_to_process, list(matches), rule, protected_map)
 
     return text_to_process, protected_map
 
@@ -286,10 +202,11 @@ def apply_terminating_rules(
     matches: list[TextMatch],
     task: TranslationTask,
 ) -> tuple[list[TextMatch], list[TextMatch]]:
-    """Apply terminating rules (skip, replace) and partition matches."""
+    """Apply terminating rules (skip) and partition matches."""
     unhandled_matches: list[TextMatch] = []
     terminated_matches: list[TextMatch] = []
-    terminating_rules = [r for r in task.rules if r.action.action in ["skip", "replace"]]
+    # 'replace' is no longer a terminating rule in the same way, it's a pre-processor.
+    terminating_rules = [r for r in task.rules if r.action.action == "skip"]
 
     if not terminating_rules:
         return matches, []
@@ -298,6 +215,7 @@ def apply_terminating_rules(
         is_handled = False
         for rule in terminating_rules:
             text_to_check = match.original_text
+            # We only care about the 'is_handled' flag here.
             _, is_handled_by_rule = _handle_rule_action(text_to_check, [match], rule, {})
             if is_handled_by_rule:
                 is_handled = True
@@ -402,26 +320,16 @@ def _create_batches(
 
 
 def _select_provider(task: TranslationTask, available_providers: list[str]) -> str:
-    """Select the translation provider based on task and availability, with robust fallbacks."""
-    # 1. Use task-specific translator if specified.
-    if task.translator:
-        if task.translator in available_providers:
-            return task.translator
-        logger.warning(
-            "Task '%s' specified translator '%s', but it is not available. Check your configuration. Falling back to default provider.",
-            task.name,
-            task.translator,
-        )
+    """Select the translation provider based on task and availability."""
+    if not task.translator:
+        msg = f"Task '{task.name}' does not specify a 'translator'. This is required in v2.1+."
+        raise ValueError(msg)
 
-    # 2. Otherwise, fall back to a default provider in a preferred order.
-    preferred_order = ["gemini", "mock", "google"]
-    for provider in preferred_order:
-        if provider in available_providers:
-            return provider
+    if task.translator in available_providers:
+        return task.translator
 
-    # This should ideally not be reached if 'google' is always available,
-    # but as a safeguard, we return it.
-    return "google"
+    msg = f"Task '{task.name}' specified translator '{task.translator}', but it is not configured in 'providers'."
+    raise ValueError(msg)
 
 
 def _translate_batch(
@@ -573,21 +481,14 @@ def _translate_and_update_matches(  # noqa: PLR0913
             time.sleep(delay)
 
 
-def process_matches(
+def _process_genai_matches(
     matches: list[TextMatch],
     task: TranslationTask,
     config: GlocalConfig,
+    translator: BaseTranslator,
+    provider_name: str,
 ) -> None:
-    """
-    Process a list of text matches for a given translation task.
-
-    This function orchestrates the main translation workflow, including:
-    - Deduplicating texts.
-    - Applying pre-processing rules.
-    - Selecting and initializing the appropriate translator.
-    - Creating and managing batches for API calls.
-    - Handling rate limiting, error handling, and updating matches.
-    """
+    """Process matches using a GenAI provider with batching and rule processing."""
     if not matches:
         return
 
@@ -603,37 +504,12 @@ def process_matches(
         logger.info("All texts were handled by pre-processing or were empty. No API call needed.")
         return
 
-    provider_name = _select_provider(task, [p.value for p in TRANSLATOR_MAPPING])
-    logger.debug(
-        "Selected translator for task '%s': '%s' (Task-specific: %s).",
-        task.name,
-        provider_name,
-        task.translator or "Not set",
-    )
-    translator = get_translator(provider_name, config)
-
-    # Fallback logic if the selected provider fails to initialize
-    if not translator:
-        logger.warning(
-            "Failed to initialize primary provider '%s'. Trying fallback 'google'.",
-            provider_name,
-        )
-        provider_name = "google"
-        translator = get_translator(provider_name, config)
-        if not translator:
-            logger.error("CRITICAL: Fallback provider 'google' also failed to initialize. Aborting translation.")
-            # Create a temporary item_map for failure reporting
-            item_map = {item.text_to_process: item for item in pre_processed_items}
-            _update_matches_on_failure(list(texts_to_translate_api), item_map, "initialization_error")
-            return
-
     provider_settings = translator.settings or ProviderSettings()
     rpm = provider_settings.rpm
     tpm = provider_settings.tpm
     rpd = provider_settings.rpd
     batch_size = provider_settings.batch_size if provider_settings.batch_size is not None else 20
 
-    # If key rate limits are not set, fall back to a single, un-throttled batch.
     if rpm is None or tpm is None:
         logger.info(
             "Provider '%s' is not configured for intelligent scheduling (RPM/TPM). Sending as a single batch.",
@@ -666,3 +542,61 @@ def process_matches(
         rpm=rpm,
         rpd=rpd,
     )
+
+
+def _process_simple_matches(
+    matches: list[TextMatch],
+    task: TranslationTask,
+    config: GlocalConfig,
+    translator: BaseTranslator,
+    provider_name: str,
+) -> None:
+    """Process matches using a simple, non-batching, non-GenAI translator."""
+    if not matches:
+        return
+
+    # Simple providers handle one text at a time.
+    for match in matches:
+        try:
+            results = translator.translate(
+                texts=[match.original_text],
+                target_language=task.target_lang,
+                source_language=task.source_lang,
+                debug=config.debug_options.enabled,
+                prompts=None,  # Simple providers don't use prompts
+            )
+            if results:
+                match.translated_text = results[0].translated_text
+                match.tokens_used = results[0].tokens_used
+                match.provider = provider_name
+        except Exception:  # noqa: PERF203
+            logger.exception("Error translating text '%s' with %s", match.original_text, provider_name)
+            match.provider = f"error_{provider_name}"
+
+
+def process_matches(
+    matches: list[TextMatch],
+    task: TranslationTask,
+    config: GlocalConfig,
+) -> None:
+    """
+    Process a list of text matches for a given translation task.
+
+    This function orchestrates the main translation workflow by dispatching
+    to the appropriate handler based on the selected provider type.
+    """
+    provider_name = _select_provider(task, list(TRANSLATOR_MAPPING.keys()))
+    translator = get_translator(provider_name, config)
+
+    if not translator:
+        logger.error("CRITICAL: Could not initialize any translator for task '%s'. Aborting.", task.name)
+        for match in matches:
+            match.provider = "initialization_error"
+        return
+
+    # --- Dispatch based on provider type ---
+    if provider_name in ("gemini", "gemma"):
+        _process_genai_matches(matches, task, config, translator, provider_name)
+    else:
+        # Fallback for simple, non-GenAI translators like 'google' or 'mock'
+        _process_simple_matches(matches, task, config, translator, provider_name)

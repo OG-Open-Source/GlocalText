@@ -3,9 +3,8 @@
 import logging
 
 from glocaltext.config import ProviderSettings
-from glocaltext.models import TranslationResult
 
-from .base import BaseTranslator
+from .base import BaseTranslator, TranslationResult
 
 logger = logging.getLogger(__name__)
 

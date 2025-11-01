@@ -1,11 +1,13 @@
 """Handles the parsing and validation of the GlocalText configuration file."""
 
-from dataclasses import dataclass, field
+import copy
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from .types import Rule, TranslationTask
 
 
 class ReportOptions(BaseModel):
@@ -60,314 +62,170 @@ PROVIDER_SETTINGS_MAP: dict[str, type[ProviderSettings]] = {
 }
 
 
-@dataclass
-class Output:
-    """Defines the output behavior for a translation task."""
-
-    in_place: bool = True
-    path: str | None = None
-    filename_suffix: str | None = None
-    filename: str | None = None
-    # The 'filename_prefix' is included for backward compatibility with older configs.
-    # It will be handled and converted to 'filename_suffix' in __post_init__.
-    filename_prefix: str | None = None
-
-    def __post_init__(self) -> None:
-        """Handle backward compatibility and validate attributes."""
-        # If 'filename_prefix' is provided, use it to populate 'filename_suffix'
-        # to maintain backward compatibility.
-        if self.filename_prefix is not None and self.filename_suffix is None:
-            self.filename_suffix = self.filename_prefix
-
-        # Original validation logic
-        if self.in_place and self.path is not None:
-            msg = "The 'path' attribute cannot be used when 'in_place' is True."
-            raise ValueError(msg)
-        if not self.in_place and self.path is None:
-            msg = "The 'path' attribute is required when 'in_place' is False."
-            raise ValueError(msg)
-
-
-@dataclass
-class MatchRule:
-    """Defines the matching criteria for a rule."""
-
-    exact: str | list[str] | None = None
-    contains: str | list[str] | None = None
-    regex: str | list[str] | None = None
-
-    def __post_init__(self) -> None:
-        """Validate that exactly one of 'exact', 'contains', or 'regex' is provided."""
-        provided_rules = [self.exact, self.contains, self.regex]
-        num_provided = sum(1 for rule in provided_rules if rule is not None)
-
-        if num_provided == 0:
-            msg = "One of 'exact', 'contains', or 'regex' must be provided for a match rule."
-            raise ValueError(msg)
-        if num_provided > 1:
-            msg = "'exact', 'contains', and 'regex' cannot be used simultaneously in a match rule."
-            raise ValueError(msg)
-
-
-@dataclass
-class ActionRule:
-    """Defines the action to be taken when a rule matches."""
-
-    action: Literal["skip", "replace", "modify", "protect"]
-    value: str | None = None
-
-    def __init__(self, **kwargs: Any) -> None:  # noqa: ANN401
-        """Initialize the ActionRule with backward compatibility for 'type'."""
-        # Provide backward compatibility for configs using 'type' instead of 'action'.
-        if "type" in kwargs:
-            kwargs["action"] = kwargs.pop("type")
-
-        # Set attributes from kwargs
-        for key, value in kwargs.items():
-            setattr(self, key, value)
-
-    def __post_init__(self) -> None:
-        """Validate that 'value' is provided for actions that require it."""
-        if self.action in ["replace", "modify"] and self.value is None:
-            msg = f"The 'value' must be provided for the '{self.action}' action."
-            raise ValueError(msg)
-
-
-@dataclass
-class Rule:
+def _deep_merge(source: dict[str, Any], destination: dict[str, Any]) -> dict[str, Any]:
     """
-    A single rule combining a match condition and an action.
+    Non-destructively merge two dictionaries.
 
-    This class is designed to be constructed from a dictionary,
-    so the from_dict method in GlocalConfig will handle the nested instantiation.
+    Source values overwrite destination values.
+    'rules' lists are merged with destination rules first, then source rules.
     """
-
-    match: MatchRule
-    action: ActionRule
-
-    def __init__(self, match: dict[str, Any], action: dict[str, Any]) -> None:
-        """Initialize the Rule with nested MatchRule and ActionRule."""
-        self.match = MatchRule(**match)
-        self.action = ActionRule(**action)
-
-
-@dataclass
-class Source:
-    """Defines the source files for a translation task."""
-
-    include: list[str] = field(default_factory=list)
+    merged = copy.deepcopy(destination)
+    for key, value in source.items():
+        if key == "rules" and key in merged and isinstance(value, list):
+            # Base rules first, then specific rules
+            merged[key].extend(copy.deepcopy(value))
+        elif isinstance(value, dict) and key in merged and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(value, merged[key])
+        else:
+            merged[key] = copy.deepcopy(value)
+    return merged
 
 
-class TranslationTask(BaseModel):
-    """A single task defining what to translate and how."""
+def _parse_rule_from_string(rule_str: str) -> dict[str, Any]:
+    """
+    Parse a rule string into a dictionary representation of a Rule.
 
-    name: str
-    source_lang: str
-    target_lang: str
-    source: Source
-    extraction_rules: list[str]
-    translator: str | None = None
-    model: str | None = None
-    prompts: dict[str, str] = Field(default_factory=dict)
-    enabled: bool = True
-    exclude: list[str] = Field(default_factory=list)
-    output: Output = Field(default_factory=Output)
-    rules: list[Rule] = Field(default_factory=list)
-    regex_rewrites: dict[str, str] = Field(default_factory=dict)
-    incremental: bool = False
-    cache_path: str | None = None
+    All match patterns are treated as regular expressions.
+    """
+    if "->" in rule_str:
+        pattern, replace_str = [s.strip().strip('"') for s in rule_str.split("->", 1)]
+        return {"match": {"regex": pattern}, "action": {"action": "replace", "value": replace_str}}
 
-    class Config:
-        """Pydantic configuration."""
+    if ":" in rule_str:
+        action, pattern = [s.strip() for s in rule_str.split(":", 1)]
+        action = action.lower()
+        pattern = pattern.strip('"')
 
-        arbitrary_types_allowed = True
+        if action in ("skip", "protect"):
+            return {"match": {"regex": pattern}, "action": {"action": action}}
+
+        msg = f"Unknown rule action: {action}"
+        raise ValueError(msg)
+
+    msg = f"Invalid rule format: {rule_str}"
+    raise ValueError(msg)
+
+
+def _apply_shortcuts(task_config: dict[str, Any], shortcuts: dict[str, Any]) -> dict[str, Any]:
+    """Apply shortcuts to a task configuration iteratively using an 'extends' key."""
+    # Resolve the full inheritance chain first
+    alias_chain = []
+    current_config = task_config
+    visited_aliases = set()
+
+    while (alias_name := current_config.get("extends")) and isinstance(alias_name, str):
+        if alias_name in visited_aliases:
+            break  # Circular dependency detected
+        if alias_name in shortcuts:
+            visited_aliases.add(alias_name)
+            shortcut_config = shortcuts[alias_name]
+            alias_chain.append(shortcut_config)
+            current_config = shortcut_config
+        else:
+            break
+
+    # Start with global defaults, if they exist
+    final_config = copy.deepcopy(shortcuts.get(".defaults", {}))
+
+    # Merge from the base of the chain up to the more specific shortcuts
+    for alias_config in reversed(alias_chain):
+        final_config = _deep_merge(alias_config, final_config)
+
+    # Finally, merge the original task config, which has the highest priority
+    final_config = _deep_merge(task_config, final_config)
+
+    final_config.pop("extends", None)
+    return final_config
+
+
+def _process_dict_rule(rule_dict: dict[str, Any], rulesets: dict[str, Any]) -> list[dict[str, Any]]:
+    """Process a rule item that is a dictionary, expanding rulesets if necessary."""
+    ruleset_name = rule_dict.get("ruleset")
+    if isinstance(ruleset_name, str):
+        if ruleset_name in rulesets:
+            return [_parse_rule_from_string(r_str) for r_str in rulesets[ruleset_name]]
+        return []  # Ruleset not found, ignore.
+    return [rule_dict]  # Not a ruleset, treat as a single rule.
+
+
+def _expand_rules(rules_data: list[Any], rulesets: dict[str, Any]) -> list[Rule]:
+    """Expand rules from strings and rulesets into Rule objects."""
+    if not isinstance(rules_data, list):
+        return []
+
+    expanded_rules: list[dict[str, Any]] = []
+    for rule_item in rules_data:
+        if isinstance(rule_item, str):
+            expanded_rules.append(_parse_rule_from_string(rule_item))
+        elif isinstance(rule_item, dict):
+            expanded_rules.extend(_process_dict_rule(rule_item, rulesets))
+
+    return [Rule(**r) for r in expanded_rules]
+
+
+def _create_tasks_from_config(
+    tasks_data: list[dict[str, Any]],
+    shortcuts: dict[str, Any],
+    rulesets: dict[str, Any],
+) -> list[TranslationTask]:
+    """Build a list of TranslationTask objects from a list of dictionaries."""
+    tasks = []
+    # First, resolve shortcuts within the shortcuts themselves
+    resolved_shortcuts = {}
+    for name, shortcut_data in shortcuts.items():
+        if name != ".defaults":
+            resolved_shortcuts[name] = _apply_shortcuts(shortcut_data, shortcuts)
+        else:
+            resolved_shortcuts[name] = shortcut_data
+
+    for task_data in tasks_data:
+        config = _apply_shortcuts(task_data, resolved_shortcuts)
+
+        rules_data = config.get("rules", [])
+        config["rules"] = _expand_rules(rules_data, rulesets)
+
+        source_val = config.get("source")
+        if isinstance(source_val, str):
+            config["source"] = {"include": [source_val]}
+        elif not isinstance(source_val, dict):
+            config["source"] = {}
+
+        tasks.append(TranslationTask(**config))
+    return tasks
 
 
 class GlocalConfig(BaseModel):
     """The root configuration for GlocalText."""
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    project_root: str | None = None
     providers: dict[str, ProviderSettings] = Field(default_factory=dict)
+    shortcuts: dict[str, Any] = Field(default_factory=dict)
+    rulesets: dict[str, Any] = Field(default_factory=dict)
     tasks: list[TranslationTask] = Field(default_factory=list)
     debug_options: DebugOptions = Field(default_factory=DebugOptions)
     report_options: ReportOptions = Field(default_factory=ReportOptions)
 
-    class Config:
-        """Pydantic configuration."""
-
-        arbitrary_types_allowed = True
-
-    @staticmethod
-    def _handle_manual_translations(task_data: dict[str, Any]) -> list[Rule]:
-        """Handle backward compatibility for 'manual_translations' and 'glossary'."""
-        rules = []
-        manual_translations = task_data.get("manual_translations", task_data.get("glossary", {}))
-        for source, target in manual_translations.items():
-            rules.append(
-                Rule(
-                    match={"exact": source},
-                    action={"action": "replace", "value": target},
-                )
-            )
-        return rules
-
-    @staticmethod
-    def _handle_keyword_replacements(task_data: dict[str, Any]) -> list[Rule]:
-        """Handle backward compatibility for 'keyword_replacements'."""
-        rules = []
-        keyword_replacements = task_data.get("keyword_replacements", {})
-        for keyword, replacement in keyword_replacements.items():
-            rules.append(
-                Rule(
-                    match={"contains": keyword},
-                    action={"action": "modify", "value": replacement},
-                )
-            )
-        return rules
-
-    @staticmethod
-    def _handle_skip_translations(task_data: dict[str, Any], global_skip_translations: list[str]) -> list[Rule]:
-        """Handle backward compatibility for 'skip_translations'."""
-        task_skip = task_data.get("skip_translations", [])
-        all_skips = set(global_skip_translations) | set(task_skip)
-        return [Rule(match={"exact": text}, action={"action": "skip"}) for text in all_skips]
-
-    @staticmethod
-    def _apply_backward_compatibility_rules(task_data: dict[str, Any], global_skip_translations: list[str]) -> list[Rule]:
-        """
-        Build a list of rules from various legacy configuration fields.
-
-        This is to ensure backward compatibility with older configuration formats that defined
-        rules like glossaries, keyword replacements, and skip lists outside the main 'rules' list.
-        """
-        # Start with rules from the new 'rules' field
-        rules = [Rule(**r) for r in task_data.get("rules", [])]
-
-        # Define a list of backward compatibility rule handlers
-        rule_handlers = [
-            GlocalConfig._handle_manual_translations,
-            GlocalConfig._handle_keyword_replacements,
-        ]
-
-        # Apply each handler to the task data
-        for handler in rule_handlers:
-            rules.extend(handler(task_data))
-
-        # Handle skip translations, which also requires global skips
-        rules.extend(GlocalConfig._handle_skip_translations(task_data, global_skip_translations))
-
-        return rules
-
-    @staticmethod
-    def _prepare_source_data(task_data: dict[str, Any]) -> dict[str, Any]:
-        """
-        Prepare the source configuration, handling backward compatibility for the 'targets' key.
-
-        In older versions, source files were defined under 'targets'. This function ensures
-        they are correctly moved to 'source.include' for the new data model.
-        """
-        source_data = task_data.get("source", {})
-        if "targets" in task_data:
-            # If 'targets' exists, merge it into the 'include' list.
-            # setdefault is used to avoid overwriting 'include' if it's already present in 'source'.
-            source_data.setdefault("include", task_data["targets"])
-        return source_data
-
-    @staticmethod
-    def _build_tasks_from_list(tasks_data: list[dict[str, Any]], global_skip_translations: list[str]) -> list[TranslationTask]:
-        """
-        Build a list of TranslationTask objects from a list of dictionaries.
-
-        This function orchestrates the parsing of each task definition, using Pydantic's
-        data validation and instantiation capabilities. It preserves backward compatibility
-        by delegating legacy field handling to helper methods.
-        """
-        tasks = []
-        for task_config in tasks_data:
-            # Create a copy to avoid modifying the original data from yaml.safe_load
-            config = task_config.copy()
-
-            # The 'rules' field requires special handling to support backward compatibility.
-            # We replace the 'rules' in the config with the consolidated list.
-            config["rules"] = GlocalConfig._apply_backward_compatibility_rules(task_config, global_skip_translations)
-
-            # Similarly, prepare the 'source' data, handling the legacy 'targets' field.
-            config["source"] = GlocalConfig._prepare_source_data(task_config)
-
-            # Provide defaults for fields that are required by the model but might be missing.
-            if "name" not in config:
-                config["name"] = "Unnamed Task"
-            if "extraction_rules" not in config:
-                config["extraction_rules"] = []
-
-            # Pydantic will now handle the rest of the validation, defaults, and instantiation.
-            tasks.append(TranslationTask(**config))
-        return tasks
-
-    @staticmethod
-    def _build_providers_from_dict(providers_data: dict[str, Any]) -> dict[str, ProviderSettings]:
-        """Build a dictionary of ProviderSettings objects from a dictionary."""
-        providers = {}
-        for name, p_config in providers_data.items():
-            config_data = p_config if isinstance(p_config, dict) else {}
-
-            # Get the correct provider settings class using the dispatch map
-            provider_class = PROVIDER_SETTINGS_MAP.get(name, ProviderSettings)
-
-            # Create a new dictionary with default values from the provider class
-            # and then update it with the values from the config file.
-            # This ensures that file values override defaults, but provider-specific
-            # defaults are respected.
-            # Pydantic v2 model_dump logic is what we are replicating here.
-            # However, since we're on v1 logic, we'll do it manually.
-
-            # We can't directly do this easily without Pydantic v2 features.
-            # The issue is that `GemmaProviderSettings` has defaults that should
-            # override `ProviderSettings` if not provided in the file.
-            # Pydantic V1 does not do this cleanly.
-            # The current implementation `provider_class(**config_data)` is actually correct
-            # for Pydantic V2-like behavior where file values are applied over defaults.
-            # The test is wrong. I will fix the test instead.
-            # The logic in the original code is correct. The test is flawed.
-
-            # Reverting to the original logic and will fix the test.
-            if "batch_options" in config_data:
-                batch_opts_data = config_data.pop("batch_options", {})
-                if "batch_size" in batch_opts_data:
-                    config_data.setdefault("batch_size", batch_opts_data.pop("batch_size"))
-                config_data["batch_options"] = BatchOptions(**batch_opts_data)
-
-            providers[name] = provider_class(**config_data)
-
-        return providers
-
-    @staticmethod
-    def _parse_system_settings(
-        data: dict[str, Any],
-    ) -> tuple[DebugOptions, ReportOptions]:
-        """Parse system-wide settings like debug and report options."""
-        debug_options = DebugOptions(**data.get("debug_options", {}))
-        report_options = ReportOptions(**data.get("report_options", {}))
-        return debug_options, report_options
-
-    @classmethod
-    def _parse_providers_settings(cls, data: dict[str, Any]) -> dict[str, ProviderSettings]:
-        """Parse provider settings from the main config dictionary."""
-        providers_data = data.get("providers", {}) or {}
-        return cls._build_providers_from_dict(providers_data)
-
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "GlocalConfig":
-        """Create a GlocalConfig object from a dictionary, with validation."""
+        """Create a GlocalConfig object from a dictionary, with validation for v2.1 format."""
         try:
-            providers = cls._parse_providers_settings(data)
-            debug_options, report_options = cls._parse_system_settings(data)
+            providers_data = data.get("providers", {})
+            providers = _build_providers_from_dict(providers_data)
+            debug_options, report_options = _parse_system_settings(data)
+
+            shortcuts = data.get("shortcuts", {})
+            rulesets = data.get("rulesets", {})
 
             tasks_data = data.get("tasks", [])
-            global_skip_translations = data.get("skip_translations", [])
-            tasks = cls._build_tasks_from_list(tasks_data, global_skip_translations)
+            tasks = _create_tasks_from_config(tasks_data, shortcuts, rulesets)
 
             return cls(
+                project_root=data.get("project_root"),
                 providers=providers,
+                shortcuts=shortcuts,
+                rulesets=rulesets,
                 tasks=tasks,
                 debug_options=debug_options,
                 report_options=report_options,
@@ -375,6 +233,25 @@ class GlocalConfig(BaseModel):
         except ValidationError as e:
             msg = f"Invalid or missing configuration: {e}"
             raise ValueError(msg) from e
+
+
+def _build_providers_from_dict(providers_data: dict[str, Any]) -> dict[str, ProviderSettings]:
+    """Build a dictionary of ProviderSettings objects from a dictionary."""
+    providers = {}
+    for name, p_config in providers_data.items():
+        config_data = p_config if isinstance(p_config, dict) else {}
+        provider_class = PROVIDER_SETTINGS_MAP.get(name, ProviderSettings)
+        providers[name] = provider_class(**config_data)
+    return providers
+
+
+def _parse_system_settings(
+    data: dict[str, Any],
+) -> tuple[DebugOptions, ReportOptions]:
+    """Parse system-wide settings like debug and report options."""
+    debug_options = DebugOptions(**data.get("debug_options", {}))
+    report_options = ReportOptions(**data.get("report_options", {}))
+    return debug_options, report_options
 
 
 def load_config(config_path: str) -> GlocalConfig:

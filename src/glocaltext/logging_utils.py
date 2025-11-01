@@ -56,12 +56,13 @@ def setup_logging(version: str, *, debug: bool = False) -> None:
     Configure the root logger for the GlocalText application.
 
     This function sets up a dual-logging system:
-    1.  Console (INFO): User-facing, concise messages.
-    2.  File (DEBUG): Developer-facing, detailed logs written to 'glocaltext_debug.log'.
+    1.  Console: User-facing messages. Level is INFO by default, DEBUG if debug=True.
+    2.  File (DEBUG): Developer-facing, detailed logs written to 'glocaltext_debug.log'
+        when debug=True.
 
     Args:
         version: The application version, included in console logs.
-        debug: If True, enables detailed file logging.
+        debug: If True, enables detailed file logging and sets console level to DEBUG.
 
     """
     root_logger = logging.getLogger()
@@ -69,11 +70,15 @@ def setup_logging(version: str, *, debug: bool = False) -> None:
     if root_logger.hasHandlers():
         root_logger.handlers.clear()
 
-    # --- Console Handler (INFO) ---
+    # Determine the logging level based on the debug flag
+    console_level = logging.DEBUG if debug else logging.INFO
+    root_logger.setLevel(logging.DEBUG if debug else logging.INFO)
+
+    # --- Console Handler ---
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(console_level)
     console_handler.setFormatter(ConsoleFormatter(version))
-    console_handler.addFilter(lambda record: record.levelno == logging.INFO)  # Allow only INFO records
+    # The filter that only allowed INFO is removed to allow DEBUG messages through.
     root_logger.addHandler(console_handler)
 
     if debug:
@@ -83,8 +88,5 @@ def setup_logging(version: str, *, debug: bool = False) -> None:
         file_handler.setFormatter(FileFormatter())
         root_logger.addHandler(file_handler)
 
-        # Set the root logger level to DEBUG to capture all logs
-        root_logger.setLevel(logging.DEBUG)
-        logging.getLogger(__name__).info("Debug mode enabled. Detailed logs will be written to glocaltext_debug.log")
-    else:
-        root_logger.setLevel(logging.INFO)
+        # Use the root logger to announce debug mode, so it appears on all handlers
+        logging.getLogger().info("Debug mode enabled. Console level set to DEBUG. Detailed logs will be written to glocaltext_debug.log")
