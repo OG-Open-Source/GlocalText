@@ -26,6 +26,7 @@ class ExecutionContext:
     config: GlocalConfig
     is_dry_run: bool = False
     is_incremental: bool = False
+    is_debug: bool = False
     translator: BaseTranslator | None = None
     files_to_process: list[Path] = field(default_factory=list)
     all_matches: list[TextMatch] = field(default_factory=list)

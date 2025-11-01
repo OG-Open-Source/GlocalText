@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def run_task(task: TranslationTask, config: GlocalConfig, *, dry_run: bool = False) -> list[TextMatch]:
+def run_task(task: TranslationTask, config: GlocalConfig, *, dry_run: bool = False, debug: bool = False) -> list[TextMatch]:
     """
     Run a single translation task by orchestrating a multi-phase processor pipeline.
 
@@ -38,6 +38,7 @@ def run_task(task: TranslationTask, config: GlocalConfig, *, dry_run: bool = Fal
         task: The translation task to execute.
         config: The global application configuration.
         dry_run: If True, skips API calls and file modifications.
+        debug: If True, enables debug logging and behaviors.
 
     Returns:
         A list containing all processed TextMatch objects.
@@ -48,6 +49,7 @@ def run_task(task: TranslationTask, config: GlocalConfig, *, dry_run: bool = Fal
         config=config,
         is_incremental=task.incremental,
         is_dry_run=dry_run,
+        is_debug=debug,
     )
 
     logger.info(

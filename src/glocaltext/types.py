@@ -14,7 +14,6 @@ class Output:
 
     in_place: bool = True
     path: str | None = None
-    filename_suffix: str | None = None
     filename: str | None = None
 
     def __post_init__(self) -> None:
@@ -61,6 +60,7 @@ class Source:
     """Defines the source files for a translation task."""
 
     include: list[str] = field(default_factory=list)
+    exclude: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -147,10 +147,8 @@ class TranslationTask(BaseModel):
     model: str | None = None
     prompts: dict[str, str] = Field(default_factory=dict)
     enabled: bool = True
-    exclude: list[str] = Field(default_factory=list)
     output: Output = Field(default_factory=Output)
     rules: list[Rule] = Field(default_factory=list)
     extraction_rules: list[str] = Field(default_factory=list)
-    regex_rewrites: dict[str, str] = Field(default_factory=dict)
     incremental: bool = False
     cache_path: str | None = None

@@ -71,7 +71,7 @@ This section is where you configure the settings for different translation provi
 
 -   **`gemini`**: Settings for Google's Gemini models.
     -   `api_key`: Your Gemini API key.
-    -   `model`: The specific model to use (e.g., `gemini-1.5-flash`).
+    -   `model`: The specific model to use (e.g., `gemini-2.5-flash-lite`).
     -   `rpm`, `tpm`: Rate and token limits.
     -   `batch_size`: Number of concurrent requests.
 -   **`gemma`**: Settings for Google's Gemma models.
@@ -84,7 +84,7 @@ This section is where you configure the settings for different translation provi
 providers:
     gemini:
         api_key: "YOUR_GEMINI_API_KEY"
-        model: "gemini-1.5-flash"
+        model: "gemini-2.5-flash-lite"
         rpm: 60 # Requests per minute
         tpm: 1000000 # Tokens per minute
         batch_size: 20
@@ -148,7 +148,18 @@ The `rules` key allows for fine-grained control over the translation of extracte
 
 -   `protect`: A list of regex patterns. Any text matching these patterns (e.g., variables like `$VAR` or `${VAR}`) will be protected from being sent to the translator.
 -   `skip`: A list of regex patterns. If an entire string matches one of these patterns, it will be skipped and not translated.
--   `replace`: A dictionary of `find: replace` pairs. This allows for pre-translation replacements. It supports regex and backreferences (e.g., `\1`, `\2`).
+-   `replace`: A dictionary of find-and-replace pairs where the key is the pattern to find and the value is the replacement string. This is a powerful **pre-processing** action that performs a substitution on the text _before_ it is evaluated by other rules or sent to the translator. It fully supports Regex capture groups and backreferences (e.g., `\\1`, `\\2`), making it ideal for complex text manipulation or providing authoritative translations for specific patterns.
+
+    **Example**: To automatically format a user tag before translation, you can add a `replace` rule. The example below finds "User: " followed by any characters, captures those characters, and replaces the string with a formatted Chinese version while keeping the original user identifier.
+
+    ```yaml
+    # In a task within the config file:
+    rules:
+        replace:
+            # Replaces "User: <name>" with "使用者: <name>" before translation.
+            # The \\1 is a backreference to the first capture group (.*).
+            "User: (.*)": "使用者: \\1"
+    ```
 
 ### 4. System-Wide Settings
 
@@ -172,7 +183,7 @@ project_root: "."
 providers:
     gemini:
         api_key: "YOUR_GEMINI_API_KEY"
-        model: "gemini-1.5-flash"
+        model: "gemini-2.5-flash-lite"
 
 # ------------------------------------------------------------------------------
 #  2. Shortcuts: For reusable configuration

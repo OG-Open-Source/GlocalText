@@ -198,29 +198,41 @@ def _apply_pre_processing_rules(original_text: str, matches: list[TextMatch], ta
     return text_to_process, protected_map
 
 
+def _is_match_terminated(match: TextMatch, rules: list[Rule]) -> bool:
+    """Check if a match should be terminated by any of the given rules."""
+    text_to_process = match.original_text
+    for rule in rules:
+        match_found, matched_value = _check_rule_match(text_to_process, rule)
+        if not match_found or not matched_value:
+            continue
+
+        action = rule.action.action
+        if action == "skip":
+            _handle_skip_action([match])
+            return True
+
+        if action == "replace":
+            temp_text = _handle_replace_action(text_to_process, matched_value, rule)
+            if temp_text == "":
+                match.provider = "rule:replace_empty"
+                return True
+    return False
+
+
 def apply_terminating_rules(
     matches: list[TextMatch],
     task: TranslationTask,
 ) -> tuple[list[TextMatch], list[TextMatch]]:
-    """Apply terminating rules (skip) and partition matches."""
+    """Apply terminating rules (skip, or replace resulting in empty) and partition matches."""
     unhandled_matches: list[TextMatch] = []
     terminated_matches: list[TextMatch] = []
-    # 'replace' is no longer a terminating rule in the same way, it's a pre-processor.
-    terminating_rules = [r for r in task.rules if r.action.action == "skip"]
+    terminating_rules = [r for r in task.rules if r.action.action in ("skip", "replace")]
 
     if not terminating_rules:
         return matches, []
 
     for match in matches:
-        is_handled = False
-        for rule in terminating_rules:
-            text_to_check = match.original_text
-            # We only care about the 'is_handled' flag here.
-            _, is_handled_by_rule = _handle_rule_action(text_to_check, [match], rule, {})
-            if is_handled_by_rule:
-                is_handled = True
-                break
-        if is_handled:
+        if _is_match_terminated(match, terminating_rules):
             terminated_matches.append(match)
         else:
             unhandled_matches.append(match)
@@ -309,8 +321,7 @@ def _create_batches(
     prompts: dict[str, str] | None,
 ) -> list[list[str]]:
     """Create smart batches by delegating to simple or smart batching strategies."""
-    provider_settings = translator.settings
-    if not provider_settings or not provider_settings.batch_options.enabled or tpm is None:
+    if tpm is None or tpm <= 0:
         return _create_simple_batches(texts_to_translate, batch_size)
 
     if not texts_to_translate:
@@ -438,10 +449,11 @@ def _translate_and_update_matches(  # noqa: PLR0913
     batches: list[list[str]],
     pre_processed_items: list[PreProcessedText],
     task: TranslationTask,
-    config: GlocalConfig,
     provider_name: str,
     rpm: int | None,
     rpd: int | None,
+    *,
+    debug: bool,
 ) -> None:
     """Translate batches and handle rate limiting, errors, and match updates."""
     delay = 60 / rpm if rpm and rpm > 0 else 0
@@ -461,7 +473,7 @@ def _translate_and_update_matches(  # noqa: PLR0913
             len(batch),
             provider_name,
         )
-        translated_results = _translate_batch(translator, batch, task, provider_name, debug=config.debug_options.enabled)
+        translated_results = _translate_batch(translator, batch, task, provider_name, debug=debug)
 
         if rpd:
             _rpd_session_counts[provider_name] += 1
@@ -484,9 +496,10 @@ def _translate_and_update_matches(  # noqa: PLR0913
 def _process_genai_matches(
     matches: list[TextMatch],
     task: TranslationTask,
-    config: GlocalConfig,
     translator: BaseTranslator,
     provider_name: str,
+    *,
+    debug: bool,
 ) -> None:
     """Process matches using a GenAI provider with batching and rule processing."""
     if not matches:
@@ -537,19 +550,20 @@ def _process_genai_matches(
         batches,
         pre_processed_items,
         task,
-        config,
         provider_name,
         rpm=rpm,
         rpd=rpd,
+        debug=debug,
     )
 
 
 def _process_simple_matches(
     matches: list[TextMatch],
     task: TranslationTask,
-    config: GlocalConfig,
     translator: BaseTranslator,
     provider_name: str,
+    *,
+    debug: bool,
 ) -> None:
     """Process matches using a simple, non-batching, non-GenAI translator."""
     if not matches:
@@ -562,7 +576,7 @@ def _process_simple_matches(
                 texts=[match.original_text],
                 target_language=task.target_lang,
                 source_language=task.source_lang,
-                debug=config.debug_options.enabled,
+                debug=debug,
                 prompts=None,  # Simple providers don't use prompts
             )
             if results:
@@ -578,6 +592,8 @@ def process_matches(
     matches: list[TextMatch],
     task: TranslationTask,
     config: GlocalConfig,
+    *,
+    debug: bool,
 ) -> None:
     """
     Process a list of text matches for a given translation task.
@@ -596,7 +612,7 @@ def process_matches(
 
     # --- Dispatch based on provider type ---
     if provider_name in ("gemini", "gemma"):
-        _process_genai_matches(matches, task, config, translator, provider_name)
+        _process_genai_matches(matches, task, translator, provider_name, debug=debug)
     else:
         # Fallback for simple, non-GenAI translators like 'google' or 'mock'
-        _process_simple_matches(matches, task, config, translator, provider_name)
+        _process_simple_matches(matches, task, translator, provider_name, debug=debug)

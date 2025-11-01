@@ -80,7 +80,7 @@ def _exclude_files(
 ) -> set[Path]:
     """Exclude files based on task's exclude patterns and output directory."""
     # Exclude files based on 'exclude' patterns
-    explicitly_excluded = {path for pattern in task.exclude for path in base_path.rglob(pattern)}
+    explicitly_excluded = {path for pattern in task.source.exclude for path in base_path.rglob(pattern)}
     candidate_files = included_files - explicitly_excluded
 
     # Exclude files in the output directory
@@ -99,23 +99,6 @@ def _find_files(task: TranslationTask, base_path: Path) -> Iterable[Path]:
     included_files = _get_included_files(task, base_path)
     final_files = _exclude_files(included_files, task, base_path)
     return sorted(final_files)
-
-
-def _apply_regex_rewrites(content: str, task: TranslationTask) -> str:
-    """Apply regex rewrites to content before extraction."""
-    if not task.regex_rewrites:
-        return content
-    for pattern, replacement in task.regex_rewrites.items():
-        try:
-            content = regex.sub(pattern, replacement, content)
-        except regex.error as e:  # noqa: PERF203
-            logger.warning(
-                "Skipping invalid regex rewrite pattern '%s' in task '%s': %s",
-                pattern,
-                task.name,
-                e,
-            )
-    return content
 
 
 def _extract_matches_from_content(content: str, file_path: Path, task: TranslationTask) -> list[TextMatch]:
@@ -161,7 +144,6 @@ class CaptureProcessor(Processor):
         for file_path in context.files_to_process:
             try:
                 content = file_path.read_text("utf-8")
-                content = _apply_regex_rewrites(content, context.task)
                 file_matches = _extract_matches_from_content(content, file_path, context.task)
                 context.all_matches.extend(file_matches)
             except OSError:  # noqa: PERF203
@@ -170,22 +152,6 @@ class CaptureProcessor(Processor):
                 logger.exception("An unexpected error occurred while processing %s", file_path)
 
         logger.info("Task '%s': Captured %d total text matches.", context.task.name, len(context.all_matches))
-        if context.config.debug_options.enabled:
-            self._log_debug_messages(context)
-
-    def _log_debug_messages(self, context: ExecutionContext) -> None:
-        """Log captured matches for debugging purposes."""
-        debug_messages = [f"[DEBUG] Captured: '{match.original_text}' from file {match.source_file} at span {match.span}" for match in context.all_matches]
-        if context.config.debug_options.log_path:
-            log_dir = Path(context.config.debug_options.log_path)
-            log_dir.mkdir(parents=True, exist_ok=True)
-            log_file = log_dir / "glocaltext_debug.log"
-            with log_file.open("a", encoding="utf-8") as f:
-                f.write("\n".join(debug_messages) + "\n")
-            logger.info("Debug log saved to %s", log_file)
-        else:
-            for msg in debug_messages:
-                logger.debug(msg)
 
 
 class TerminatingRuleProcessor(Processor):
@@ -332,9 +298,10 @@ class TranslationProcessor(Processor):
 
         logger.info("Processing %d matches for API translation.", len(context.matches_to_translate))
         process_matches(
-            context.matches_to_translate,
-            context.task,
-            context.config,
+            matches=context.matches_to_translate,
+            task=context.task,
+            config=context.config,
+            debug=context.is_debug,
         )
 
 
@@ -393,8 +360,6 @@ def _get_output_path(file_path: Path, task: TranslationTask) -> Path | None:
     """Calculate the output path for a given source file."""
     task_output = task.output
     if task_output.in_place:
-        if task_output.filename_suffix:
-            return file_path.with_name(f"{file_path.stem}{task_output.filename_suffix}{file_path.suffix}")
         return file_path
     if not task_output.path:
         return None
@@ -405,9 +370,6 @@ def _get_output_path(file_path: Path, task: TranslationTask) -> Path | None:
             source_lang=task.source_lang,
             target_lang=task.target_lang,
         )
-        return output_dir / new_name
-    if task_output.filename_suffix:
-        new_name = f"{file_path.stem}{task_output.filename_suffix}{file_path.suffix}"
         return output_dir / new_name
     return output_dir / file_path.name
 

@@ -3,13 +3,10 @@
 import argparse
 import logging
 import sys
-import time
-from typing import Any
 
 from . import __version__
 from .config import GlocalConfig, load_config
 from .logging_utils import setup_logging
-from .reporting import generate_summary_report
 from .workflow import run_task
 
 logger = logging.getLogger(__name__)
@@ -43,9 +40,9 @@ def _parse_args() -> argparse.Namespace:
         help="Run in incremental mode, translating only new or modified content.",
     )
     parser.add_argument(
-        "--verbose",
+        "--debug",
         action="store_true",
-        help="Enable verbose (DEBUG) logging to the console.",
+        help="Enable debug level logging.",
     )
     parser.add_argument(
         "--dry-run",
@@ -73,7 +70,7 @@ def _load_config(args: argparse.Namespace) -> GlocalConfig | None:
         return None
 
 
-def _run_tasks(config: GlocalConfig, *, incremental: bool, dry_run: bool) -> list[Any]:
+def _run_tasks(config: GlocalConfig, *, incremental: bool, dry_run: bool, debug: bool) -> None:
     """
     Iterate over and execute all enabled translation tasks.
 
@@ -81,22 +78,16 @@ def _run_tasks(config: GlocalConfig, *, incremental: bool, dry_run: bool) -> lis
         config: The application's configuration object.
         incremental: A flag indicating whether to run in incremental mode.
         dry_run: A flag indicating whether to perform a dry run.
-
-    Returns:
-        A list of all matches found across all executed tasks.
+        debug: A flag indicating whether to run in debug mode.
 
     """
-    all_matches: list[Any] = []
     for task in config.tasks:
         if task.enabled:
             if incremental:
                 task.incremental = True
             logger.info("Running Task: '%s'", task.name)
             logger.debug("Starting task '%s' with config: %s", task.name, task.model_dump_json(indent=2))
-            task_matches = run_task(task, config, dry_run=dry_run)
-            all_matches.extend(task_matches)
-            logger.debug("Task '%s' finished, found %d matches.", task.name, len(task_matches))
-    return all_matches
+            run_task(task, config, dry_run=dry_run, debug=debug)
 
 
 def main() -> None:
@@ -107,18 +98,14 @@ def main() -> None:
     1. Parses command-line arguments.
     2. Loads the configuration.
     3. Runs all enabled tasks.
-    4. Generates a summary report.
     """
-    start_time = time.time()
-
     try:
         args = _parse_args()
-        setup_logging(version=__version__, debug=args.verbose)
+        setup_logging(version=__version__, debug=args.debug)
         config = _load_config(args)
 
         if config:
-            all_matches = _run_tasks(config, incremental=args.incremental, dry_run=args.dry_run)
-            generate_summary_report(all_matches, start_time, config)
+            _run_tasks(config, incremental=args.incremental, dry_run=args.dry_run, debug=args.debug)
 
     except Exception:
         logger.exception("An unexpected error occurred")

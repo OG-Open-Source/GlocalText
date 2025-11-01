@@ -10,34 +10,12 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from .types import ActionRule, MatchRule, Rule, TranslationTask
 
 
-class ReportOptions(BaseModel):
-    """Options for generating a summary report."""
-
-    enabled: bool = True
-    export_csv: bool = False
-    export_dir: str | None = None
-
-
-class DebugOptions(BaseModel):
-    """Options for debugging the translation process."""
-
-    enabled: bool = False
-    log_path: str | None = None
-
-
-class BatchOptions(BaseModel):
-    """Batching settings for a provider."""
-
-    enabled: bool = True
-    max_tokens_per_batch: int = 8000
-
-
 class ProviderSettings(BaseModel):
     """Settings for a specific translation provider."""
 
     api_key: str | None = None
     model: str | None = None
-    batch_options: BatchOptions = Field(default_factory=BatchOptions)
+    max_tokens_per_batch: int | None = None
     batch_size: int | None = 20
     rpm: int | None = None
     tpm: int | None = None
@@ -229,8 +207,6 @@ class GlocalConfig(BaseModel):
     providers: dict[str, ProviderSettings] = Field(default_factory=dict)
     shortcuts: dict[str, Any] = Field(default_factory=dict)
     tasks: list[TranslationTask] = Field(default_factory=list)
-    debug_options: DebugOptions = Field(default_factory=DebugOptions)
-    report_options: ReportOptions = Field(default_factory=ReportOptions)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "GlocalConfig":
@@ -238,7 +214,6 @@ class GlocalConfig(BaseModel):
         try:
             providers_data = data.get("providers", {})
             providers = _build_providers_from_dict(providers_data)
-            debug_options, report_options = _parse_system_settings(data)
 
             shortcuts = data.get("shortcuts", {})
 
@@ -250,8 +225,6 @@ class GlocalConfig(BaseModel):
                 providers=providers,
                 shortcuts=shortcuts,
                 tasks=tasks,
-                debug_options=debug_options,
-                report_options=report_options,
             )
         except ValidationError as e:
             msg = f"Invalid or missing configuration: {e}"
@@ -266,15 +239,6 @@ def _build_providers_from_dict(providers_data: dict[str, Any]) -> dict[str, Prov
         provider_class = PROVIDER_SETTINGS_MAP.get(name, ProviderSettings)
         providers[name] = provider_class(**config_data)
     return providers
-
-
-def _parse_system_settings(
-    data: dict[str, Any],
-) -> tuple[DebugOptions, ReportOptions]:
-    """Parse system-wide settings like debug and report options."""
-    debug_options = DebugOptions(**data.get("debug_options", {}))
-    report_options = ReportOptions(**data.get("report_options", {}))
-    return debug_options, report_options
 
 
 def load_config(config_path: str) -> GlocalConfig:
@@ -314,6 +278,6 @@ def load_config(config_path: str) -> GlocalConfig:
     except yaml.YAMLError as e:
         msg = f"Error parsing YAML config file: {e}"
         raise yaml.YAMLError(msg) from e
-    except (KeyError, TypeError, ValueError) as e:
+    except (AttributeError, KeyError, TypeError, ValueError) as e:
         msg = f"Invalid or missing configuration: {e}"
         raise ValueError(msg) from e
