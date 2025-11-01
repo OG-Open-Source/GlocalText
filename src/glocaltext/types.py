@@ -31,7 +31,7 @@ class Output:
 class MatchRule:
     """Defines the matching criteria for a rule, which is always a regex pattern."""
 
-    regex: str | list[str]
+    regex: str
 
 
 @dataclass
@@ -54,11 +54,6 @@ class Rule:
 
     match: MatchRule
     action: ActionRule
-
-    def __init__(self, match: dict[str, Any], action: dict[str, Any]) -> None:
-        """Initialize the Rule with nested MatchRule and ActionRule."""
-        self.match = MatchRule(**match)
-        self.action = ActionRule(**action)
 
 
 @dataclass
@@ -154,7 +149,7 @@ class TranslationTask(BaseModel):
     enabled: bool = True
     exclude: list[str] = Field(default_factory=list)
     output: Output = Field(default_factory=Output)
-    rules: list[Any] = Field(default_factory=list)
+    rules: list[Rule] = Field(default_factory=list)
     extraction_rules: list[str] = Field(default_factory=list)
     regex_rewrites: dict[str, str] = Field(default_factory=dict)
     incremental: bool = False

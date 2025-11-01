@@ -57,113 +57,172 @@ pip install GlocalText
 
 ## Configuration (`glocaltext_config.yaml`)
 
-This file is the control center for GlocalText. It is structured into several key sections:
+`GlocalText` is controlled by a central YAML configuration file, typically named `glocaltext_config.yaml`. This file acts as the command center for all translation tasks, defining everything from provider credentials to the specific jobs to be executed.
 
--   `shortcuts`: Reusable configuration blocks that can be inherited by tasks.
--   `rulesets`: Reusable sets of rules that can be included in tasks.
--   `providers`: Configuration for translation providers (e.g., API keys, rate limits).
--   `tasks`: The list of translation jobs to be executed.
--   `debug_options`: Settings for enabling and configuring debug logging.
--   `report_options`: Settings for controlling summary report generation.
+Here is a breakdown of the configuration structure, based on the `glocaltext_config.example.yaml`.
 
-### Task Configuration
+### Top-Level Keys
 
-Each item in the `tasks` list defines a self-contained translation job. Tasks can also inherit settings from `shortcuts` to avoid repetition. Key settings include:
+-   `project_root` (Optional): Sets the root directory for the project. All relative paths within the configuration (e.g., in `source` or `output`) will be resolved from this location. If not specified, it defaults to the directory where you run the `glocaltext` command.
 
--   **`name`**: A unique name for the task.
--   **`source_lang`** & **`target_lang`**: The source and target language codes (e.g., "en", "zh-TW").
--   **`source`**: Defines which files to process.
-    -   **`include`**: A list of `glob` patterns for files to translate.
-    -   **`exclude`**: A list of `glob` patterns for files to skip.
--   **`extraction_rules`**: A list of regex patterns to extract translatable text.
--   **`incremental`**: A boolean (`true` or `false`) to enable or disable incremental translation. When enabled, only new or modified text is translated. This can also be overridden globally via the `--incremental` command-line flag.
--   **`cache_path`**: (Optional) A path to a directory where the task's cache file (`.glocaltext_cache.json`) will be stored.
--   **`output`**: Defines how translated files are written.
-    -   **`in_place`**: If `true`, modifies original files. If `false`, writes to a new directory.
-    -   **`path`**: The output directory. Required if `in_place` is `false`.
-    -   **`filename`**: (Optional) A string template to define the output filename.
-        -   Available placeholders: `{stem}`, `{source_lang}`, `{target_lang}`.
-        -   Example: `filename: "{stem}.{target_lang}.md"` results in `mydoc.zh-TW.md`.
-        -   If `filename` is provided, `filename_suffix` is ignored.
-    -   **`filename_suffix`**: (Legacy) A suffix to add to the output filenames (e.g., `_translated`).
--   **`rules`**: The Regex-based rules for text processing (see `skip`, `replace`, `protect`).
+### 1. `providers`
 
-### Configuration Inheritance with `shortcuts` and `rulesets`
+This section is where you configure the settings for different translation providers. You only need to configure the ones you plan to use.
 
-To keep your configuration DRY (Don't Repeat Yourself), GlocalText supports `shortcuts` and `rulesets`.
+-   **`gemini`**: Settings for Google's Gemini models.
+    -   `api_key`: Your Gemini API key.
+    -   `model`: The specific model to use (e.g., `gemini-1.5-flash`).
+    -   `rpm`, `tpm`: Rate and token limits.
+    -   `batch_size`: Number of concurrent requests.
+-   **`gemma`**: Settings for Google's Gemma models.
+-   **`google`**: Settings for the Google Translate API.
+-   **`mock`**: A mock translator for testing, which simulates translation by prefixing strings (e.g., `en-US: Hello` -> `mock-ja: Hello`).
 
--   **`shortcuts`**: Define reusable blocks of configuration. A special shortcut named `.defaults` is automatically inherited by all tasks. You can create other named shortcuts and apply them to tasks using the `<<: *shortcut_name` YAML anchor syntax.
--   **`rulesets`**: Define reusable lists of rules. You can include a ruleset in a task's `rules` list with `- ruleset: your_ruleset_name`.
+**Example:**
+
+```yaml
+providers:
+    gemini:
+        api_key: "YOUR_GEMINI_API_KEY"
+        model: "gemini-1.5-flash"
+        rpm: 60 # Requests per minute
+        tpm: 1000000 # Tokens per minute
+        batch_size: 20
+```
+
+### 2. `shortcuts`
+
+Shortcuts are reusable configuration blocks defined using YAML anchors (`&`). They help keep your tasks DRY (Don't Repeat Yourself). You can define a default set of options and extend it in other shortcuts or tasks.
+
+-   Use `&<name>` to define a shortcut.
+-   Use `*<name>` to reference a shortcut.
+-   Use `<<: *<name>` to inherit and merge a shortcut's key-value pairs.
+
+**Example:**
 
 ```yaml
 shortcuts:
+    # A default set of options
     .defaults: &defaults
         translator: "gemini"
+        source_lang: "en"
         incremental: true
+        cache_path: "path/to/cache_file"
 
-    .markdown_docs: &markdown_docs
-        <<: *defaults
+    # A shortcut for shell scripts that inherits from .defaults
+    .scripts: &scripts
+        <<: *defaults # Inherit all keys from &defaults
         source:
-            include: ["docs/**/*.md"]
-        extraction_rules: ["`([^`]+)`"]
-
-rulesets:
-    brand-names:
-        - "protect: GlocalText"
-
-tasks:
-    - name: "Translate Docs to French"
-      <<: *markdown_docs
-      target_lang: "fr"
-      rules:
-          - ruleset: brand-names
-          - '"^Hello$" -> "Bonjour"' # Use regex anchors for an exact match
+            include: ["**/*.sh", "**/*.ps1"]
+        extraction_rules:
+            - 'echo "([^"]*)"'
 ```
 
-### Provider Settings
+### 3. `tasks`
 
-You can configure provider-specific settings under the `providers` key. For instance, for providers like `gemini` and `gemma`, you can specify the model and other API-specific parameters.
+This is the core section where you define the list of translation jobs. Each item in the list is a task object.
 
-These settings offer fine-grained control over API interactions:
+#### Common Task Keys:
 
--   `model`: Specifies the model to use (e.g., `"gemini-1.5-flash"` for Gemini, or `"gemma-3-27b-it"` for Gemma).
--   `retry_attempts`: The number of times to retry a failed API call.
--   `retry_delay`: The delay in seconds between retries.
--   `retry_backoff_factor`: A multiplier to increase the delay between subsequent retries (e.g., a factor of `2` results in delays of 1s, 2s, 4s, ...).
+-   `name`: A descriptive name for the task.
+-   `enabled`: Set to `true` or `false` to enable or disable the task.
+-   `<<: *shortcut_name`: Inherit settings from a defined shortcut.
+-   `target_lang`: The language to translate to (e.g., `"zh-TW"`, `"ja"`).
+-   `source`: Specifies which files to include or exclude.
+    -   `include`: A list of glob patterns for files to process.
+    -   `exclude`: A list of glob patterns for files to ignore.
+-   `extraction_rules`: A list of regular expressions used to extract translatable strings from files that are not structured (like shell scripts or markdown). The first capture group (`(...)`) should contain the text to be translated.
+-   `output`: Defines how and where to write the translated files.
+    -   `in_place`: If `true`, overwrites the source files. Defaults to `false`.
+    -   `path`: The directory to save translated files.
+    -   `filename`: A pattern for the output filename. Supports placeholders:
+        -   `{stem}`: The original filename without the extension.
+        -   `{ext}`: The original file extension.
+        -   `{target_lang}`: The target language code.
+-   `prompts`: (For AI-based translators like Gemini) Custom prompts to guide the translation.
+    -   `system`: A system prompt to set the context for the AI (e.g., "You are a professional translator...").
 
-In addition to retry logic, GlocalText includes a powerful **intelligent scheduling and batching system** to maximize throughput while respecting API rate limits. You can control this system using these optional parameters:
+#### The `rules` Dictionary
 
--   `rpm` (requests per minute): Max API requests per minute.
--   `tpm` (tokens per minute): Max tokens processed per minute.
--   `rpd` (requests per day): Max API requests per day.
--   `batch_size`: The number of texts to group into a single API call.
+The `rules` key allows for fine-grained control over the translation of extracted strings. It is a dictionary containing `protect`, `skip`, and `replace` rules. Rules from shortcuts are deep-merged with task-specific rules.
 
-GlocalText uses these values to automatically manage API calls, batching texts and spacing out requests to avoid exceeding provider limits. This is highly effective for large translation jobs.
+-   `protect`: A list of regex patterns. Any text matching these patterns (e.g., variables like `$VAR` or `${VAR}`) will be protected from being sent to the translator.
+-   `skip`: A list of regex patterns. If an entire string matches one of these patterns, it will be skipped and not translated.
+-   `replace`: A dictionary of `find: replace` pairs. This allows for pre-translation replacements. It supports regex and backreferences (e.g., `\1`, `\2`).
 
-**Importantly**, all provider parameters are **optional**. GlocalText provides sensible defaults. For example, `gemma` defaults to a conservative `rpm` of 30, while other providers may have different defaults. If you only provide an `api_key`, the system will use default settings for everything else.
+### 4. System-Wide Settings
 
-### API Key Configuration
+-   `debug_options`: Configure logging for debugging purposes.
+-   `report_options`: Configure translation run reports.
 
-API keys are configured under the `providers` section. GlocalText follows a clear priority for API key resolution:
+### Comprehensive Task Example
 
-1.  **Environment Variable**: It first checks for a dedicated environment variable (e.g., `GEMINI_API_KEY`).
-2.  **Configuration File**: If the environment variable is not set, it uses the `api_key` from `glocaltext_config.yaml`.
-
-This allows for flexibility in development (config file) and security in production (environment variables).
-
-### System-Wide Settings
-
-You can also define global `debug_options` and `report_options`:
+This example defines a task to translate Markdown documentation into Japanese. It inherits from the `.defaults` shortcut, specifies source and output paths, and provides a custom system prompt for the AI translator.
 
 ```yaml
+# ==============================================================================
+# GlocalText Configuration File
+# ==============================================================================
+
+project_root: "."
+
+# ------------------------------------------------------------------------------
+#  1. Provider Settings
+# ------------------------------------------------------------------------------
+providers:
+    gemini:
+        api_key: "YOUR_GEMINI_API_KEY"
+        model: "gemini-1.5-flash"
+
+# ------------------------------------------------------------------------------
+#  2. Shortcuts: For reusable configuration
+# ------------------------------------------------------------------------------
+shortcuts:
+    .defaults: &defaults
+        translator: "gemini"
+        source_lang: "en"
+        incremental: true
+        cache_path: ".glocaltext_cache"
+
+# ------------------------------------------------------------------------------
+#  3. Tasks: The core translation jobs
+# ------------------------------------------------------------------------------
+tasks:
+    - name: "Translate Markdown Docs to Japanese"
+      enabled: true
+      <<: *defaults # Inherit from the defaults shortcut
+      target_lang: "ja"
+      source:
+          include: ["docs/**/*.md"]
+          exclude: ["docs/internal/**"]
+      extraction_rules:
+          # Extract text from within backticks
+          - "`([^`]+)`"
+      rules:
+          protect:
+              # Protect code blocks and variables
+              - "`[^`]+`"
+              - '\w+\.\w+'
+          skip:
+              # Don't translate version numbers
+              - '^v\d+\.\d+\.\d+$'
+      output:
+          in_place: false
+          path: "output/ja" # Place translated files in output/ja/
+          filename: "{stem}.{target_lang}.md" # e.g., my_doc.ja.md
+      prompts:
+          system: "You are a professional translator specializing in technical documentation for a software project. Translate with a formal and clear tone."
+
+# ------------------------------------------------------------------------------
+#  4. System-Wide Settings
+# ------------------------------------------------------------------------------
 debug_options:
-    enabled: true
-    log_path: "logs/debug.log" # Custom path for the debug log
+    enabled: false
+    log_path: "logs/glocaltext_debug.log"
 
 report_options:
     enabled: true
-    export_csv: true
-    export_dir: "reports" # Directory to save the CSV report
+    export_dir: "reports"
 ```
 
 ## Usage

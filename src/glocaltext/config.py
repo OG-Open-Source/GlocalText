@@ -2,12 +2,12 @@
 
 import copy
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from .types import Rule, TranslationTask
+from .types import ActionRule, MatchRule, Rule, TranslationTask
 
 
 class ReportOptions(BaseModel):
@@ -67,62 +67,35 @@ def _deep_merge(source: dict[str, Any], destination: dict[str, Any]) -> dict[str
     Non-destructively merge two dictionaries.
 
     Source values overwrite destination values.
-    'rules' lists are merged with destination rules first, then source rules.
+    Nested dictionaries (including 'rules') are merged recursively.
     """
     merged = copy.deepcopy(destination)
     for key, value in source.items():
-        if key == "rules" and key in merged and isinstance(value, list):
-            # Base rules first, then specific rules
-            merged[key].extend(copy.deepcopy(value))
-        elif isinstance(value, dict) and key in merged and isinstance(merged.get(key), dict):
+        if isinstance(value, dict) and key in merged and isinstance(merged.get(key), dict):
             merged[key] = _deep_merge(value, merged[key])
         else:
             merged[key] = copy.deepcopy(value)
     return merged
 
 
-def _parse_rule_from_string(rule_str: str) -> dict[str, Any]:
-    """
-    Parse a rule string into a dictionary representation of a Rule.
+def _resolve_shortcut_chain(current_config: dict[str, Any], shortcuts: dict[str, Any]) -> list[dict[str, Any]]:
+    """Resolve the full inheritance chain of shortcuts."""
+    alias_chain = []
+    visited_aliases = set()
+    current_alias = current_config.get("extends")
 
-    All match patterns are treated as regular expressions.
-    """
-    if "->" in rule_str:
-        pattern, replace_str = [s.strip().strip('"') for s in rule_str.split("->", 1)]
-        return {"match": {"regex": pattern}, "action": {"action": "replace", "value": replace_str}}
+    while isinstance(current_alias, str) and current_alias not in visited_aliases and current_alias in shortcuts:
+        visited_aliases.add(current_alias)
+        shortcut_config = shortcuts[current_alias]
+        alias_chain.append(shortcut_config)
+        current_alias = shortcut_config.get("extends")
 
-    if ":" in rule_str:
-        action, pattern = [s.strip() for s in rule_str.split(":", 1)]
-        action = action.lower()
-        pattern = pattern.strip('"')
-
-        if action in ("skip", "protect"):
-            return {"match": {"regex": pattern}, "action": {"action": action}}
-
-        msg = f"Unknown rule action: {action}"
-        raise ValueError(msg)
-
-    msg = f"Invalid rule format: {rule_str}"
-    raise ValueError(msg)
+    return alias_chain
 
 
 def _apply_shortcuts(task_config: dict[str, Any], shortcuts: dict[str, Any]) -> dict[str, Any]:
     """Apply shortcuts to a task configuration iteratively using an 'extends' key."""
-    # Resolve the full inheritance chain first
-    alias_chain = []
-    current_config = task_config
-    visited_aliases = set()
-
-    while (alias_name := current_config.get("extends")) and isinstance(alias_name, str):
-        if alias_name in visited_aliases:
-            break  # Circular dependency detected
-        if alias_name in shortcuts:
-            visited_aliases.add(alias_name)
-            shortcut_config = shortcuts[alias_name]
-            alias_chain.append(shortcut_config)
-            current_config = shortcut_config
-        else:
-            break
+    alias_chain = _resolve_shortcut_chain(task_config, shortcuts)
 
     # Start with global defaults, if they exist
     final_config = copy.deepcopy(shortcuts.get(".defaults", {}))
@@ -138,35 +111,88 @@ def _apply_shortcuts(task_config: dict[str, Any], shortcuts: dict[str, Any]) -> 
     return final_config
 
 
-def _process_dict_rule(rule_dict: dict[str, Any], rulesets: dict[str, Any]) -> list[dict[str, Any]]:
-    """Process a rule item that is a dictionary, expanding rulesets if necessary."""
-    ruleset_name = rule_dict.get("ruleset")
-    if isinstance(ruleset_name, str):
-        if ruleset_name in rulesets:
-            return [_parse_rule_from_string(r_str) for r_str in rulesets[ruleset_name]]
-        return []  # Ruleset not found, ignore.
-    return [rule_dict]  # Not a ruleset, treat as a single rule.
-
-
-def _expand_rules(rules_data: list[Any], rulesets: dict[str, Any]) -> list[Rule]:
-    """Expand rules from strings and rulesets into Rule objects."""
-    if not isinstance(rules_data, list):
+def _parse_simple_action_rules(patterns: str | list[str] | None, action_type: Literal["skip", "protect"]) -> list[Rule]:
+    """Parse simple action rules (skip, protect) from a string or list."""
+    if not patterns:
         return []
 
-    expanded_rules: list[dict[str, Any]] = []
-    for rule_item in rules_data:
-        if isinstance(rule_item, str):
-            expanded_rules.append(_parse_rule_from_string(rule_item))
-        elif isinstance(rule_item, dict):
-            expanded_rules.extend(_process_dict_rule(rule_item, rulesets))
+    if isinstance(patterns, str):
+        patterns = [patterns]
 
-    return [Rule(**r) for r in expanded_rules]
+    rules = []
+    if isinstance(patterns, list):
+        for pattern in patterns:
+            if isinstance(pattern, str):
+                rule = Rule(
+                    match=MatchRule(regex=pattern),
+                    action=ActionRule(action=action_type),
+                )
+                rules.append(rule)
+    return rules
+
+
+def _parse_rules_from_legacy_list(rules_list: list) -> dict[str, Any]:
+    """Convert old list-based rule format to the new dictionary format."""
+    skip_rules: list[str] = []
+    protect_rules: list[str] = []
+    replace_rules_map: dict[str, str] = {}
+    for item in rules_list:
+        if not isinstance(item, str):
+            continue
+
+        if "->" in item:
+            pattern, replacement = (part.strip() for part in item.split("->", 1))
+            replace_rules_map[pattern] = replacement
+        elif ":" in item:
+            action, pattern = (part.strip() for part in item.split(":", 1))
+            action_lower = action.lower()
+            if action_lower == "skip":
+                skip_rules.append(pattern)
+            elif action_lower == "protect":
+                protect_rules.append(pattern)
+    return {
+        "skip": skip_rules,
+        "protect": protect_rules,
+        "replace": replace_rules_map,
+    }
+
+
+def _parse_rules(rules_data: dict[str, Any] | list) -> list[Rule]:
+    """Parse rules from a dictionary (new format) or list (old format) into Rule objects."""
+    rules_dict: dict[str, Any]
+
+    # Handle backward compatibility for old list-based rule format
+    if isinstance(rules_data, list):
+        rules_dict = _parse_rules_from_legacy_list(rules_data)
+    elif isinstance(rules_data, dict):
+        rules_dict = rules_data
+    else:
+        # If it's neither a list nor a dict, there are no rules to parse.
+        return []
+
+    expanded_rules: list[Rule] = []
+
+    # Handle single-action rules like 'skip' and 'protect'
+    for action_type in ("skip", "protect"):
+        patterns = rules_dict.get(action_type)
+        expanded_rules.extend(_parse_simple_action_rules(patterns, action_type))
+
+    # Handle 'replace' rules
+    replace_rules = rules_dict.get("replace")
+    if isinstance(replace_rules, dict):
+        for pattern, replacement in replace_rules.items():
+            rule = Rule(
+                match=MatchRule(regex=pattern),
+                action=ActionRule(action="replace", value=str(replacement)),
+            )
+            expanded_rules.append(rule)
+
+    return expanded_rules
 
 
 def _create_tasks_from_config(
     tasks_data: list[dict[str, Any]],
     shortcuts: dict[str, Any],
-    rulesets: dict[str, Any],
 ) -> list[TranslationTask]:
     """Build a list of TranslationTask objects from a list of dictionaries."""
     tasks = []
@@ -181,8 +207,8 @@ def _create_tasks_from_config(
     for task_data in tasks_data:
         config = _apply_shortcuts(task_data, resolved_shortcuts)
 
-        rules_data = config.get("rules", [])
-        config["rules"] = _expand_rules(rules_data, rulesets)
+        rules_data = config.get("rules", {})
+        config["rules"] = _parse_rules(rules_data)
 
         source_val = config.get("source")
         if isinstance(source_val, str):
@@ -202,7 +228,6 @@ class GlocalConfig(BaseModel):
     project_root: str | None = None
     providers: dict[str, ProviderSettings] = Field(default_factory=dict)
     shortcuts: dict[str, Any] = Field(default_factory=dict)
-    rulesets: dict[str, Any] = Field(default_factory=dict)
     tasks: list[TranslationTask] = Field(default_factory=list)
     debug_options: DebugOptions = Field(default_factory=DebugOptions)
     report_options: ReportOptions = Field(default_factory=ReportOptions)
@@ -216,16 +241,14 @@ class GlocalConfig(BaseModel):
             debug_options, report_options = _parse_system_settings(data)
 
             shortcuts = data.get("shortcuts", {})
-            rulesets = data.get("rulesets", {})
 
             tasks_data = data.get("tasks", [])
-            tasks = _create_tasks_from_config(tasks_data, shortcuts, rulesets)
+            tasks = _create_tasks_from_config(tasks_data, shortcuts)
 
             return cls(
                 project_root=data.get("project_root"),
                 providers=providers,
                 shortcuts=shortcuts,
-                rulesets=rulesets,
                 tasks=tasks,
                 debug_options=debug_options,
                 report_options=report_options,

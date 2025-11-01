@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "GlocalText"
-version = "4.0.0a1"
+version = "4.0.0a3"
 description = "A config-driven script to batch translate files using various providers."
 authors = ["OG-Open-Source"]
 license = "MIT"

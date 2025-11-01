@@ -18,95 +18,96 @@ project_root: "."
 #  and select which one to use for each task.
 # ------------------------------------------------------------------------------
 providers:
-  # Example for Google Gemini
-  gemini:
-    # API key can be set here, but it's recommended to use environment variables
-    # (e.g., GEMINI_API_KEY) for better security.
-    api_key: "YOUR_GEMINI_API_KEY" # Or leave empty to use env var
-    model: "gemini-1.5-flash"
+    # Example for Google Gemini, which uses the official Google AI API.
+    gemini:
+        # API key can be set here, but it's recommended to use an environment variable
+        # (e.g., GEMINI_API_KEY) for better security.
+        api_key: "YOUR_GEMINI_API_KEY"
+        model: "gemini-2.5-flash-lite"
 
-    # Intelligent scheduling and batching settings to respect API rate limits.
-    # All are optional and have sensible defaults.
-    rpm: 60 # Requests Per Minute
-    tpm: 100000 # Tokens Per Minute
-    rpd: 1000 # Requests Per Day
-    batch_size: 20 # Number of texts to group in one API call
+        # Intelligent scheduling and batching settings to respect API rate limits.
+        # All are optional and have sensible defaults.
+        rpm: 60 # Requests Per Minute
+        tpm: 100000 # Tokens Per Minute
+        rpd: 1000 # Requests Per Day
+        batch_size: 20 # Number of texts to group in one API call
 
-    # Retry logic for handling transient network errors.
-    retry_attempts: 3
-    retry_delay: 1.0 # Initial delay in seconds
-    retry_backoff_factor: 2.0 # Multiplier for subsequent retries (e.g., 1s, 2s, 4s)
+        # Retry logic for handling transient network errors.
+        retry_attempts: 3
+        retry_delay: 1.0 # Initial delay in seconds
+        retry_backoff_factor: 2.0 # Multiplier for subsequent retries (e.g., 1s, 2s, 4s)
 
-  # Example for Google Gemma (via a local Ollama server, for instance)
-  gemma:
-    # For local models, the API key might be optional or a specific string.
-    # Refer to your local server's documentation.
-    api_key: "ollama"
-    model: "gemma:7b"
-    # The 'extra' field allows passing non-standard options to the provider.
-    # For Ollama, you can specify the full server URL.
-    extra:
-      base_url: "http://localhost:11434/v1"
+    # Example for Google Gemma, which also uses the official Google AI API.
+    gemma:
+        api_key: "YOUR_GEMMA_API_KEY" # Often the same as the Gemini key
+        model: "gemma-3-27b-it"
+
+    # The 'google' provider uses the deep-translator library and does not require
+    # any configuration under the 'providers' section to work.
+    google: {}
+
+    # The 'mock' provider is for testing and requires no configuration.
+    mock: {}
 
 # ------------------------------------------------------------------------------
 #  2. Shortcuts & Rulesets: For reusable configuration
 # ------------------------------------------------------------------------------
 shortcuts:
-  # '.defaults' is a special shortcut that is implicitly inherited by ALL tasks.
-  .defaults: &defaults
-    translator: "gemini"
-    source_lang: "en"
-    incremental: true # Enable caching to avoid re-translating unchanged text.
-    cache_path: ".glocaltext_cache" # Optional: Specify a central cache directory.
+    # '.defaults' is a special shortcut that is implicitly inherited by ALL tasks.
+    .defaults: &defaults
+        translator: "gemini"
+        source_lang: "en"
+        incremental: true # Enable caching to avoid re-translating unchanged text.
+        cache_path: ".glocaltext_cache" # Optional: Specify a central cache directory.
 
-  # A custom shortcut for translating script files.
-  .scripts: &scripts
-    <<: *defaults # Inherit from .defaults
-    source:
-      include: ["**/*.sh", "**/*.ps1"]
-    extraction_rules:
-      - 'echo "([^"]*)"'
-      - "echo -e '([^']*)'"
-    rules:
-      - ruleset: shell-vars-protection # Reference a ruleset defined below.
-
-rulesets:
-  # A reusable set of rules to protect shell variables from translation.
-  shell-vars-protection:
-    - 'protect: \$\w+|\$\{\w+\}' # Protects $VAR and ${VAR}
+    # A custom shortcut for translating script files.
+    .scripts: &scripts
+        <<: *defaults # Inherit from .defaults
+        source:
+            include: ["**/*.sh", "**/*.ps1"]
+        extraction_rules:
+            - 'echo "([^"]*)"'
+            - "echo -e '([^']*)'"
+        rules:
+            protect:
+                - '\$\w+|\$\{\w+\}' # Protects $VAR and ${VAR}
 
 # ------------------------------------------------------------------------------
 #  3. Tasks: The core translation jobs
 # ------------------------------------------------------------------------------
 tasks:
-  - name: "Translate Shell Scripts to Traditional Chinese"
-    <<: *scripts # Use the .scripts shortcut
-    target_lang: "zh-TW"
-    # You can add or override settings from the shortcut.
-    rules:
-      # 'protect' rules are inherited from the shortcut.
-      # All match patterns are treated as Regex. For an exact match, use ^ and $.
-      # All 'replace' values (like in '->') support Regex backreferences (e.g., \1).
-      - 'skip: ^Don''t translate me$' # Use two single quotes to escape in YAML.
-      - '"User: (.*)" -> "使用者: \\1"' # In YAML, backslashes in quotes must be escaped.
+    - name: "Translate Shell Scripts to Traditional Chinese"
+      enabled: true # You can temporarily disable a task by setting this to false.
+      <<: *scripts # Use the .scripts shortcut
+      target_lang: "zh-TW"
+      # You can add or override settings from the shortcut.
+      # Rules are now defined as a dictionary, which is deep-merged with the shortcut's rules.
+      rules:
+          # 'protect' rules are inherited from the shortcut.
+          # All match patterns are treated as Regex. For an exact match, use ^ and $.
+          # All 'replace' values support Regex backreferences (e.g., \1).
+          skip:
+              - "^Don't translate me$"
+          replace:
+              "User: (.*)": "使用者: \\1"
 
-  - name: "Translate Markdown Docs to Japanese"
-    <<: *defaults # Inherit only the base settings
-    target_lang: "ja"
-    source:
-      include: ["docs/**/*.md"]
-      exclude: ["docs/internal/**"] # Exclude specific subdirectories.
-    extraction_rules:
-      - '`([^`]+)`' # Extract content from inline code blocks.
-    output:
-      in_place: false # Write to a new directory instead of modifying original files.
-      path: "output/ja"
-      # Optional: Define a custom filename structure.
-      # Placeholders: {stem}, {source_lang}, {target_lang}
-      filename: "{stem}.{target_lang}.md"
-    # Prompts can be used to add context for the AI translator.
-    prompts:
-      system: "You are a professional translator specializing in technical documentation."
+    - name: "Translate Markdown Docs to Japanese"
+      <<: *defaults # Inherit only the base settings
+      target_lang: "ja"
+      source:
+          include: ["docs/**/*.md"]
+          exclude: ["docs/internal/**"] # Exclude specific subdirectories.
+      extraction_rules:
+          - "`([^`]+)`" # Extract content from inline code blocks.
+      output:
+          in_place: false # Write to a new directory instead of modifying original files.
+          path: "output/ja"
+          # Optional: Define a custom filename structure.
+          # Placeholders: {stem}, {source_lang}, {target_lang}
+          filename: "{stem}.{target_lang}.md"
+      # Prompts can be used to add context for the AI translator.
+      prompts:
+          system: "You are a professional translator specializing in technical documentation."
 
 # ------------------------------------------------------------------------------
 #  4. System-Wide Settings
@@ -114,11 +115,11 @@ tasks:
 
 # Debug options for troubleshooting.
 debug_options:
-  enabled: false
-  log_path: "logs/glocaltext_debug.log" # Optional: Custom path for the debug log.
+    enabled: false
+    log_path: "logs/glocaltext_debug.log" # Optional: Custom path for the debug log.
 
 # Reporting options for the translation summary.
 report_options:
-  enabled: true
-  export_csv: false
-  export_dir: "reports" # Directory to save the CSV report if enabled.
+    enabled: true
+    export_csv: false
+    export_dir: "reports" # Directory to save the CSV report if enabled.
