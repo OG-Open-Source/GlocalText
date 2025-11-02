@@ -25,11 +25,13 @@ class ConsoleFormatter(logging.Formatter):
         )
         self.converter = time.gmtime
 
-    def format_time(self, record: logging.LogRecord, datefmt: str | None = None) -> str:
-        """Format the time with milliseconds and a 'Z' for UTC."""
+    def formatTime(self, record: logging.LogRecord, datefmt: str | None = None) -> str:  # noqa: N802
+        """Format the time with 6-digit microseconds and a 'Z' for UTC."""
         ct = self.converter(record.created)
         s = time.strftime(datefmt, ct) if datefmt else time.strftime(self.default_time_format, ct)
-        return f"{s}.{record.msecs:03d}Z"
+        # Calculate microseconds from the fractional part of `created`
+        microseconds = int((record.created - int(record.created)) * 1_000_000)
+        return f"{s}.{microseconds:06d}Z"
 
 
 # File Log Formatter
@@ -44,11 +46,13 @@ class FileFormatter(logging.Formatter):
         )
         self.converter = time.gmtime
 
-    def format_time(self, record: logging.LogRecord, datefmt: str | None = None) -> str:
-        """Format the time with milliseconds and a 'Z' for UTC."""
+    def formatTime(self, record: logging.LogRecord, datefmt: str | None = None) -> str:  # noqa: N802
+        """Format the time with 6-digit microseconds and a 'Z' for UTC."""
         ct = self.converter(record.created)
         s = time.strftime(datefmt, ct) if datefmt else time.strftime(self.default_time_format, ct)
-        return f"{s}.{record.msecs:03d}Z"
+        # Calculate microseconds from the fractional part of `created`
+        microseconds = int((record.created - int(record.created)) * 1_000_000)
+        return f"{s}.{microseconds:06d}Z"
 
 
 def setup_logging(version: str, *, debug: bool = False) -> None:

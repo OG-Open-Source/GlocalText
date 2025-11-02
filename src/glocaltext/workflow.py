@@ -61,8 +61,8 @@ def run_task(task: TranslationTask, config: GlocalConfig, *, dry_run: bool = Fal
     # Define the processor pipeline
     pipeline: Sequence[Processor] = [
         CaptureProcessor(),
-        TerminatingRuleProcessor(),
         CacheProcessor(),
+        TerminatingRuleProcessor(),
         TranslationProcessor(),
         CacheUpdateProcessor(),
         WriteBackProcessor(),

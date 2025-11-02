@@ -159,11 +159,11 @@ class TerminatingRuleProcessor(Processor):
 
     def process(self, context: ExecutionContext) -> None:
         """Apply terminating rules and update context with remaining and terminated matches."""
-        remaining_matches, terminated_matches = apply_terminating_rules(context.all_matches, context.task)
+        # This processor now runs *after* the CacheProcessor, so it only
+        # needs to process the remaining matches.
+        remaining_matches, terminated_matches = apply_terminating_rules(context.matches_to_translate, context.task)
         context.terminated_matches.extend(terminated_matches)
-        # The remaining matches are stored temporarily and passed to the next processor
-        # by the orchestrator, so we store them in a temporary field or handle in orchestrator
-        context.matches_to_translate = remaining_matches  # Temporarily hold remaining
+        context.matches_to_translate = remaining_matches
         logger.debug(
             "Task '%s': %d matches handled by terminating rules.",
             context.task.name,
@@ -256,20 +256,23 @@ class CacheProcessor(Processor):
 
     def process(self, context: ExecutionContext) -> None:
         """Check the cache for translations and partition the matches."""
-        remaining_matches = context.matches_to_translate  # From previous processor
+        # This processor is now the first filter after Capture.
+        # It should operate on all matches and pass the remainder to the next stage.
         if not context.task.incremental:
-            context.matches_to_translate = remaining_matches
+            context.matches_to_translate = context.all_matches
             return
 
         cache_path = _get_task_cache_path(context.files_to_process, context.task)
         cache = _load_cache(cache_path, context.task.name)
 
-        matches_to_translate, cached_matches = _partition_matches_by_cache(remaining_matches, cache)
+        # Partition all captured matches, not just a subset.
+        matches_to_translate, cached_matches = _partition_matches_by_cache(context.all_matches, cache)
+
         context.matches_to_translate = matches_to_translate
         context.cached_matches = cached_matches
 
         unique_texts_count = len({m.original_text for m in context.matches_to_translate})
-        logger.debug("Found %d cached translations (including rule-based).", len(context.cached_matches))
+        logger.debug("Found %d cached translations.", len(context.cached_matches))
         logger.info("%d unique texts require new translation.", unique_texts_count)
 
 
@@ -278,12 +281,14 @@ class TranslationProcessor(Processor):
 
     def process(self, context: ExecutionContext) -> None:
         """Translate texts using an external API, unless in dry-run mode."""
-        # Filter out empty or whitespace-only matches before translation.
-        # These are matches that were not handled by any terminating rules.
+        # This processor's input is all matches that are not terminated by rules or found in cache.
+        # First, filter out any empty/whitespace-only strings before they are sent to the API.
+
+        matches_to_process = context.matches_to_translate
+
         valid_matches = []
         empty_matches = []
-        for match in context.matches_to_translate:
-            # The text to consider is the original text, as pre-processing only handles 'protect'.
+        for match in matches_to_process:
             text_to_check = match.original_text
             if text_to_check and text_to_check.strip():
                 valid_matches.append(match)
@@ -294,9 +299,10 @@ class TranslationProcessor(Processor):
             logger.info("Discarding %d empty or whitespace-only matches before translation.", len(empty_matches))
             for match in empty_matches:
                 match.provider = "skipped:empty"
+            # Add them to terminated_matches so they are tracked and written back correctly.
             context.terminated_matches.extend(empty_matches)
 
-        # The context for the rest of this processor is now only the valid matches.
+        # The context for the rest of this processor is now only the valid, non-empty matches.
         context.matches_to_translate = valid_matches
 
         if context.task.source_lang == context.task.target_lang:
@@ -413,7 +419,9 @@ def _group_matches_by_file(matches: list[TextMatch]) -> dict[Path, list[TextMatc
     """Group matches by their source file for write-back."""
     grouped_by_file: dict[Path, list[TextMatch]] = {}
     for match in matches:
-        if match.translated_text is not None:
+        # A match should be written back if it has a provider, which indicates it has been processed.
+        # This includes cached, skipped, or translated matches.
+        if match.provider:
             grouped_by_file.setdefault(match.source_file, []).append(match)
     return grouped_by_file
 

@@ -187,36 +187,64 @@ def _apply_pre_processing_rules(original_text: str, matches: list[TextMatch], ta
     text_to_process = original_text
     protected_map: dict[str, str] = {}
 
-    # 'replace' rules are now terminating and handled separately.
-    # This function now only handles 'protect' rules.
-    pre_processing_rules = [r for r in task.rules if r.action.action == "protect"]
-    for rule in pre_processing_rules:
-        # We pass a copy of matches to avoid modifying the original list in this loop
-        text_to_process, _ = _handle_rule_action(text_to_process, list(matches), rule, protected_map)
+    # Pre-processing rules are 'protect' and 'replace' rules that do not act as terminating rules.
+    # A terminating 'replace' is one that fully matches the text or replaces with an empty string.
+    # We apply all other 'replace' rules here as pre-processors.
+    for rule in task.rules:
+        if rule.action.action == "protect":
+            # 'protect' rules are always pre-processing.
+            text_to_process, _ = _handle_rule_action(text_to_process, list(matches), rule, protected_map)
+        elif rule.action.action == "replace":
+            # A 'replace' is pre-processing if it's NOT a full match.
+            patterns = [rule.match.regex] if isinstance(rule.match.regex, str) else rule.match.regex
+            is_full_match_rule = any(regex.fullmatch(p, original_text, regex.DOTALL) for p in patterns)
+
+            if not is_full_match_rule:
+                text_to_process, _ = _handle_rule_action(text_to_process, list(matches), rule, protected_map)
 
     return text_to_process, protected_map
 
 
+def _try_terminate_with_replace(match: TextMatch, text: str, rule: Rule, matched_pattern: str) -> bool:
+    """
+    Attempt to terminate a match with a 'replace' rule.
+
+    A 'replace' rule is terminating if it matches the ENTIRE string or replaces with an empty value.
+    Returns True if the match was successfully terminated.
+    """
+    is_full_match = regex.fullmatch(matched_pattern, text, regex.DOTALL) is not None
+    is_replace_to_empty = rule.action.value == ""
+
+    if not (is_full_match or is_replace_to_empty):
+        return False
+
+    modified_text = _handle_replace_action(text, matched_pattern, rule)
+    if modified_text != text:
+        match.translated_text = modified_text
+        match.provider = "rule:replace"
+        return True
+
+    return False
+
+
 def _is_match_terminated(match: TextMatch, rules: list[Rule]) -> bool:
-    """Check if a match should be terminated by a 'skip' or 'replace' rule."""
+    """Check if a match should be terminated by a 'skip' or a 'full-match replace' rule."""
     text_to_process = match.original_text
     for rule in rules:
-        match_found, matched_value = _check_rule_match(text_to_process, rule)
-        if not match_found or not matched_value:
+        if rule.action.action not in ("skip", "replace"):
             continue
 
-        action = rule.action.action
-        if action == "skip":
-            _handle_skip_action([match])  # This sets the provider to "skipped"
+        match_found, matched_pattern = _check_rule_match(text_to_process, rule)
+        if not match_found or not matched_pattern:
+            continue
+
+        if rule.action.action == "skip":
+            _handle_skip_action([match])
             return True
 
-        if action == "replace":
-            modified_text = _handle_replace_action(text_to_process, matched_value, rule)
-            # A replacement is terminating if it actually changes the text.
-            if modified_text != text_to_process:
-                match.translated_text = modified_text
-                match.provider = "rule:replace"
-                return True
+        if rule.action.action == "replace" and _try_terminate_with_replace(match, text_to_process, rule, matched_pattern):
+            return True
+
     return False
 
 
@@ -512,7 +540,7 @@ def _process_genai_matches(
     logger.info("Found %d unique text strings to process for API translation.", len(unique_texts))
 
     pre_processed_items = _apply_translation_rules(unique_texts, task)
-    texts_to_translate_api = list(dict.fromkeys(item.text_to_process for item in pre_processed_items if item.text_to_process))
+    texts_to_translate_api = list(dict.fromkeys(item.text_to_process for item in pre_processed_items if item.text_to_process and item.text_to_process.strip()))
 
     if not texts_to_translate_api:
         logger.info("All texts were handled by pre-processing or were empty. No API call needed.")
