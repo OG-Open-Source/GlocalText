@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 
 from google import genai
 from google.api_core import exceptions as api_core_exceptions
+from google.genai import types
 from pydantic import BaseModel, Field
 
 from glocaltext.config import ProviderSettings
@@ -80,6 +81,23 @@ class BaseGenAITranslator(BaseTranslator, ABC):
         """The default model name to use if not specified in settings."""
         raise NotImplementedError
 
+    def _get_generation_config(self) -> types.GenerateContentConfig | None:
+        """
+        Return the generation configuration for the API call.
+
+        Subclasses can override this to provide model-specific configurations.
+        By default, no specific config is sent.
+        """
+        return None
+
+    def _get_prompt_template(self) -> str:
+        """
+        Return the prompt template for the translation task.
+
+        Subclasses can override this to provide model-specific prompt structures.
+        """
+        return PROMPT_TEMPLATE
+
     @abstractmethod
     def _parse_response(self, response_text: str, original_texts: list[str]) -> list[str]:
         """
@@ -118,7 +136,7 @@ class BaseGenAITranslator(BaseTranslator, ABC):
         if not texts:
             return []
 
-        template = (prompts or {}).get("user", PROMPT_TEMPLATE)
+        template = (prompts or {}).get("user", self._get_prompt_template())
 
         prompt = template.format(
             source_lang=source_language or "the original language",
@@ -138,7 +156,7 @@ class BaseGenAITranslator(BaseTranslator, ABC):
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=prompt,
-                config=None,
+                config=self._get_generation_config(),
             )
         except api_core_exceptions.GoogleAPICallError as e:
             logger.exception("A Google API error occurred during translation.")
@@ -180,7 +198,7 @@ class BaseGenAITranslator(BaseTranslator, ABC):
         if not texts:
             return 0
 
-        template = (prompts or {}).get("user", PROMPT_TEMPLATE)
+        template = (prompts or {}).get("user", self._get_prompt_template())
         prompt = template.format(
             source_lang="en",  # lang doesn't matter for token count
             target_lang="fr",

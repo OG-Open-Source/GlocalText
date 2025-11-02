@@ -23,13 +23,13 @@ class GeminiTranslator(BaseGenAITranslator):
         """The default model name to use if not specified in settings."""
         return "gemini-flash-lite-latest"
 
-    def _get_generation_config(self) -> types.GenerationConfig:
+    def _get_generation_config(self) -> types.GenerateContentConfig:
         """
         Return the generation configuration for the API call.
 
         For Gemini, we specify the response MIME type as JSON.
         """
-        return types.GenerationConfig(response_mime_type="application/json")
+        return types.GenerateContentConfig(response_mime_type="application/json")
 
     def _parse_response(self, response_text: str, original_texts: list[str]) -> list[str]:
         """

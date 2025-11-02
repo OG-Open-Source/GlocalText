@@ -11,6 +11,19 @@ from .base_genai import BaseGenAITranslator, TranslationList
 logger = logging.getLogger(__name__)
 
 
+GEMMA_PROMPT_TEMPLATE = """<start_of_turn>user
+You are a professional translation engine. Your task is to translate a list of texts from {source_lang} to {target_lang}.
+
+You MUST return a JSON object with a single key "translations" that contains a list of the translated strings.
+The list of translated strings must have the same number of items as the input list.
+If a translation is not possible, return the original text for that item. Do not add explanations.
+
+Translate the following texts:
+{texts_json_array}<end_of_turn>
+<start_of_turn>model
+"""
+
+
 class GemmaTranslator(BaseGenAITranslator):
     """
     A translator for the Gemma family of models.
@@ -24,6 +37,10 @@ class GemmaTranslator(BaseGenAITranslator):
     def _default_model_name(self) -> str:
         """The default model name to use if not specified in settings."""
         return "gemma-3-27b-it"
+
+    def _get_prompt_template(self) -> str:
+        """Return the Gemma-specific prompt template."""
+        return GEMMA_PROMPT_TEMPLATE
 
     def _parse_response(self, response_text: str, original_texts: list[str]) -> list[str]:
         """

@@ -16,28 +16,18 @@ class ProviderSettings(BaseModel):
     api_key: str | None = None
     model: str | None = None
     max_tokens_per_batch: int | None = None
-    batch_size: int | None = 20
+    batch_size: int | None = None
     rpm: int | None = None
     tpm: int | None = None
     rpd: int | None = None
     retry_attempts: int | None = 3
-    retry_delay: float | None = 1.0
+    retry_delay: float | None = 5.0
     retry_backoff_factor: float | None = 2.0
     extra: dict[str, Any] | None = None
 
 
-class GemmaProviderSettings(ProviderSettings):
-    """Specific settings for the Gemma provider."""
-
-    rpm: int | None = 30
-    tpm: int | None = 15000
-    rpd: int | None = 14400
-
-
 # Dispatch map for provider-specific settings classes
-PROVIDER_SETTINGS_MAP: dict[str, type[ProviderSettings]] = {
-    "gemma": GemmaProviderSettings,
-}
+PROVIDER_SETTINGS_MAP: dict[str, type[ProviderSettings]] = {}
 
 
 def _deep_merge(source: dict[str, Any], destination: dict[str, Any]) -> dict[str, Any]:
