@@ -7,11 +7,11 @@ from typing import Any
 
 import regex
 
-from .config import GlocalConfig, ProviderSettings, Rule, TranslationTask
+from .config import GlocalConfig, ProviderSettings
 from .models import TextMatch
 from .translators import TRANSLATOR_MAPPING
 from .translators.base import BaseTranslator, TranslationResult
-from .types import PreProcessedText
+from .types import PreProcessedText, Rule, TranslationTask
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ def _get_translator(provider_name: str, settings: ProviderSettings | None) -> Ba
     try:
         # Factory: Instantiate the translator class with its settings.
         return translator_class(settings=settings)
-    except (ImportError, AttributeError, KeyError) as e:
+    except (ImportError, AttributeError, KeyError, ValueError) as e:
         # Gracefully handle errors during instantiation (e.g., missing API key).
         logger.warning("Could not initialize translator '%s': %s", provider_name, e)
         return None

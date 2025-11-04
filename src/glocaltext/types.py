@@ -152,3 +152,4 @@ class TranslationTask(BaseModel):
     extraction_rules: list[str] = Field(default_factory=list)
     incremental: bool = False
     cache_path: str | None = None
+    task_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique identifier for this task. Auto-generated if not provided.")

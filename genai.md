@@ -1,6 +1,6 @@
 # For Gemini
 
-# migrate.md
+# https://ai.google.dev/gemini-api/docs/migrate.md.txt
 
 Starting with the Gemini 2.0 release in late 2024, we introduced a new set of libraries called the [Google GenAI SDK](https://ai.google.dev/gemini-api/docs/libraries). It offers an improved developer experience through an [updated client architecture](https://ai.google.dev/gemini-api/docs/migrate#client), and [simplifies the transition](https://ai.google.dev/gemini-api/docs/migrate-to-cloud) between developer and enterprise workflows.
 
@@ -1784,7 +1784,7 @@ The new SDK simplifies tuning with `client.tunings.tune`, which launches the tun
 
 ---
 
-# structured-output.md
+# https://ai.google.dev/gemini-api/docs/structured-output.md.txt
 
 You can configure Gemini for structured output instead of unstructured text, allowing precise extraction and standardization of information for further processing. For example, you can use structured output to extract information from resumes, standardize them to build a structured database.
 
@@ -2307,7 +2307,7 @@ Now that you've learned how to generate structured output, you might want to try
 
 ---
 
-# batch-api.md
+# https://ai.google.dev/gemini-api/docs/batch-api.md.txt
 
 The Gemini Batch API is designed to process large volumes of requests asynchronously at [50% of the standard cost](https://ai.google.dev/gemini-api/docs/pricing). The target turnaround time is 24 hours, but in majority of cases, it is much quicker.
 
@@ -3130,7 +3130,7 @@ You can delete an existing batch job using its name. When a job is deleted, it s
 
 ---
 
-# caching.md
+# https://ai.google.dev/gemini-api/docs/caching.md.txt
 
 Python JavaScript Go REST
 
@@ -3367,7 +3367,7 @@ Keep the following considerations in mind when using context caching:
 
 ---
 
-# tokens.md
+# https://ai.google.dev/gemini-api/docs/tokens.md.txt
 
 Python JavaScript Go
 
@@ -3584,7 +3584,7 @@ If you use function calling, the `total_tokens` count increases to reflect the a
 
 ---
 
-# prompting-strategies.md
+# https://ai.google.dev/gemini-api/docs/prompting-strategies.md.txt
 
 _Prompt design_ is the process of creating prompts, or natural language requests, that elicit accurate, high quality responses from a language model.
 
@@ -3803,9 +3803,11 @@ In the second stage, the generative model converts these distributions into actu
 -   To learn about image prompting, see the [Imagen prompt guide](https://ai.google.dev/gemini-api/docs/image-generation#imagen-prompt-guide)
 -   To learn about video prompting, see the [Veo prompt guide](https://ai.google.dev/gemini-api/docs/video#prompt-guide)
 
+---
+
 # For Gemma
 
-# prompt-structure.md
+# https://ai.google.dev/gemma/docs/core/prompt-structure.md.txt
 
 ## Gemma formatting and system instructions
 
@@ -3840,7 +3842,7 @@ The token `"<end_of_turn>\n"` is the turn separator, and the prompt prefix is `"
 
 Note that if you want to finetune the pretrained Gemma models with your own data, you can use any such schema for control tokens, as long as it's consistent between your training and inference use cases.
 
-## System instructions
+### System instructions
 
 Gemma's instruction-tuned models are designed to work with only two roles: `user` and `model`. Therefore, the `system` role or a system turn is not supported.
 
@@ -3855,7 +3857,7 @@ Instead of using a separate system role, provide system-level instructions direc
 
 ---
 
-# gemma_on_gemini_api.md
+# https://ai.google.dev/gemma/docs/core/gemma_on_gemini_api.md.txt
 
 ## Run Gemma with the Gemini API
 
@@ -3863,7 +3865,7 @@ The Gemini API provides hosted access to Gemma as a programming API you can use 
 
 The following examples show how to use Gemma with the Gemini API:
 
-### Python
+#### Python
 
     from google import genai
 
@@ -3876,7 +3878,7 @@ The following examples show how to use Gemma with the Gemini API:
 
     print(response.text)
 
-### Node.js
+#### Node.js
 
     import { GoogleGenAI } from "@google/genai";
 
@@ -3888,7 +3890,7 @@ The following examples show how to use Gemma with the Gemini API:
     });
     console.log(response.text);
 
-### REST
+#### REST
 
     curl "https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=<var translate="no">YOUR_API_KEY</var>" \
     -H 'Content-Type: application/json' \
@@ -3903,13 +3905,13 @@ The following examples show how to use Gemma with the Gemini API:
 
 You can access the Gemini API on many platforms, such as mobile, web, and cloud services, and with multiple programming languages. For more information on Gemini API SDK packages, see the Gemini API [SDK downloads](https://ai.google.dev/gemini-api/docs/downloads) page. For a general introduction to the Gemini API, see the [Gemini API quickstart](https://ai.google.dev/gemini-api/docs/quickstart).
 
-## Image Understanding
+### Image Understanding
 
 Gemma 3 models can process images, enabling many frontier developer use cases that would have historically required domain specific models.
 
 The following examples show how to use Gemma Image inputs with the Gemini API:
 
-### Python
+#### Python
 
     from google import genai
 
@@ -3924,7 +3926,7 @@ The following examples show how to use Gemma Image inputs with the Gemini API:
 
     print(response.text)
 
-### Node.js
+#### Node.js
 
     import {
       GoogleGenAI,
@@ -3949,7 +3951,7 @@ The following examples show how to use Gemma Image inputs with the Gemini API:
     console.log(response.text);
      ```
 
-### REST
+#### REST
 
     IMAGE_PATH="cats-and-dogs.jpg"
     MIME_TYPE=$(file -b --mime-type "${IMAGE_PATH}")

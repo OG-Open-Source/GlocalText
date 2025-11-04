@@ -33,9 +33,8 @@ class GemmaTranslator(BaseGenAITranslator):
     for validation.
     """
 
-    @property
     def _default_model_name(self) -> str:
-        """The default model name to use if not specified in settings."""
+        """Return the default model name to use if not specified in settings."""
         return "gemma-3-27b-it"
 
     def _get_prompt_template(self) -> str:

@@ -2,8 +2,8 @@
 
 import logging
 from collections import defaultdict
-from pathlib import Path
 
+from glocaltext import paths
 from glocaltext.models import ExecutionContext, TextMatch
 
 logger = logging.getLogger(__name__)
@@ -20,15 +20,20 @@ class DryRunReporter:
             context: The execution context containing all run information.
 
         """
-        report_path = Path.cwd() / f"{context.task.name}_dry_run_report.md"
-        logger.info("Generating dry-run report at: %s", report_path)
-
-        report_content = self._build_report_content(context)
-
+        report_path = None
         try:
+            report_dir = paths.get_report_dir()
+            paths.ensure_dir_exists(report_dir)
+            report_path = report_dir / f"{context.task.name}_dry_run.md"
+            logger.info("Generating dry-run report at: %s", report_path)
+
+            report_content = self._build_report_content(context)
+
             with report_path.open("w", encoding="utf-8") as f:
                 f.write(report_content)
             logger.info("Successfully wrote dry-run report to %s", report_path)
+        except FileNotFoundError:
+            logger.exception("Could not generate dry-run report because the project root could not be determined.")
         except OSError:
             logger.exception("Failed to write dry-run report to %s", report_path)
 

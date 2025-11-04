@@ -70,15 +70,14 @@ class BaseGenAITranslator(BaseTranslator, ABC):
         try:
             # Using the Client API for consistency with the new SDK guidelines.
             self.client = genai.Client(api_key=self.settings.api_key)
-            self.model_name = self.settings.model or self._default_model_name
+            self.model_name = self.settings.model or self._default_model_name()
         except (ValueError, api_core_exceptions.GoogleAPICallError) as e:
             msg = f"Failed to initialize GenAI client: {e}"
             raise ConnectionError(msg) from e
 
-    @property
     @abstractmethod
     def _default_model_name(self) -> str:
-        """The default model name to use if not specified in settings."""
+        """Return the default model name to use if not specified in settings."""
         raise NotImplementedError
 
     def _get_generation_config(self) -> types.GenerateContentConfig | None:

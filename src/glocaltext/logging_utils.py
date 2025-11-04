@@ -6,6 +6,8 @@ import sys
 import time
 from logging import FileHandler
 
+from . import paths
+
 
 # Console Log Formatter
 class ConsoleFormatter(logging.Formatter):
@@ -86,11 +88,22 @@ def setup_logging(version: str, *, debug: bool = False) -> None:
     root_logger.addHandler(console_handler)
 
     if debug:
-        # --- File Handler (DEBUG) ---
-        file_handler = FileHandler("glocaltext_debug.log", mode="w", encoding="utf-8")
-        file_handler.setLevel(logging.DEBUG)
-        file_handler.setFormatter(FileFormatter())
-        root_logger.addHandler(file_handler)
+        try:
+            log_dir = paths.get_log_dir()
+            paths.ensure_dir_exists(log_dir)
+            log_file_path = log_dir / "debug.log"
 
-        # Use the root logger to announce debug mode, so it appears on all handlers
-        logging.getLogger().info("Debug mode enabled. Console level set to DEBUG. Detailed logs will be written to glocaltext_debug.log")
+            # --- File Handler (DEBUG) ---
+            file_handler = FileHandler(log_file_path, mode="w", encoding="utf-8")
+            file_handler.setLevel(logging.DEBUG)
+            file_handler.setFormatter(FileFormatter())
+            root_logger.addHandler(file_handler)
+
+            # Use the root logger to announce debug mode, so it appears on all handlers
+            logging.getLogger().info(
+                "Debug mode enabled. Console level set to DEBUG. Detailed logs will be written to %s",
+                log_file_path,
+            )
+        except Exception:
+            # If creating the log file fails, we should still continue with console logging.
+            logging.getLogger().exception("Failed to create debug log file. Continuing with console logging only.")

@@ -4,7 +4,7 @@ import argparse
 import logging
 import sys
 
-from . import __version__
+from . import __version__, paths
 from .config import GlocalConfig, load_config
 from .logging_utils import setup_logging
 from .workflow import run_task
@@ -25,14 +25,8 @@ def _parse_args() -> argparse.Namespace:
         "-v",
         "--version",
         action="version",
-        version=f"%(prog)s {__version__}",
+        version=f"GlocalText {__version__}",
         help="Show the version number and exit.",
-    )
-    parser.add_argument(
-        "-c",
-        "--config",
-        default="glocaltext_config.yaml",
-        help="Path to the configuration file (default: glocaltext_config.yaml)",
     )
     parser.add_argument(
         "--incremental",
@@ -52,21 +46,25 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _load_config(args: argparse.Namespace) -> GlocalConfig | None:
+def _load_config() -> GlocalConfig | None:
     """
-    Load configuration from a file.
-
-    Args:
-        args: The parsed command-line arguments.
+    Load configuration from the fixed file path.
 
     Returns:
         An optional GlocalConfig object if loading is successful, otherwise None.
 
     """
     try:
-        return load_config(args.config)
+        config_path = paths.get_config_file_path()
+        logger.info("Loading configuration from: %s", config_path)
+        return load_config(str(config_path))
     except FileNotFoundError:
-        logger.exception("Configuration file not found at: %s", args.config)
+        # This is now a critical error if the config anchor can't be found.
+        # The error from find_project_root is more descriptive.
+        logger.exception("Could not find a valid configuration file.")
+        return None
+    except Exception:
+        logger.exception("An unexpected error occurred while loading the configuration.")
         return None
 
 
@@ -102,10 +100,16 @@ def main() -> None:
     try:
         args = _parse_args()
         setup_logging(version=__version__, debug=args.debug)
-        config = _load_config(args)
+
+        config = _load_config()
 
         if config:
             _run_tasks(config, incremental=args.incremental, dry_run=args.dry_run, debug=args.debug)
+        else:
+            # If config is None, it means an error occurred during loading.
+            # The error has already been logged by _load_config.
+            logger.critical("Failed to load configuration. Aborting.")
+            sys.exit(1)
 
     except Exception:
         logger.exception("An unexpected error occurred")

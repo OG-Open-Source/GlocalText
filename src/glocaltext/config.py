@@ -1,13 +1,18 @@
 """Handles the parsing and validation of the GlocalText configuration file."""
 
 import copy
+import logging
+import uuid
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from ruamel.yaml import YAML
 
 from .types import ActionRule, MatchRule, Rule, TranslationTask
+
+logger = logging.getLogger(__name__)
 
 
 class ProviderSettings(BaseModel):
@@ -204,12 +209,45 @@ def _parse_rules(rules_data: dict[str, Any] | list) -> list[Rule]:
     return expanded_rules
 
 
+def _generate_stable_task_id(config: dict[str, Any]) -> str:
+    """
+    Generate a stable UUID v5 based on task's key characteristics.
+
+    This ensures the same logical task always gets the same ID, even if the name changes.
+    """
+    # Create a deterministic hash from key task properties
+    key_properties = {
+        "source_lang": config.get("source_lang", ""),
+        "target_lang": config.get("target_lang", ""),
+        "source": config.get("source", {}),
+        "extraction_rules": config.get("extraction_rules", []),
+    }
+
+    # Convert to a stable string representation
+    stable_string = yaml.dump(key_properties, sort_keys=True, default_flow_style=False)
+
+    # Generate UUID v5 using a namespace (DNS namespace is standard practice)
+    namespace = uuid.NAMESPACE_DNS
+    task_uuid = uuid.uuid5(namespace, stable_string)
+
+    return str(task_uuid)
+
+
 def _create_tasks_from_config(
     tasks_data: list[dict[str, Any]],
     shortcuts: dict[str, Any],
-) -> list[TranslationTask]:
-    """Build a list of TranslationTask objects from a list of dictionaries."""
+) -> tuple[list[TranslationTask], list[int]]:
+    """
+    Build a list of TranslationTask objects from a list of dictionaries.
+
+    Returns:
+        A tuple of (tasks, generated_indices) where generated_indices contains
+        the indices of tasks that had their task_id auto-generated.
+
+    """
     tasks = []
+    generated_indices = []  # Track which tasks had task_id auto-generated
+
     # First, resolve shortcuts within the shortcuts themselves
     resolved_shortcuts = {}
     for name, shortcut_data in shortcuts.items():
@@ -218,7 +256,7 @@ def _create_tasks_from_config(
         else:
             resolved_shortcuts[name] = shortcut_data
 
-    for task_data in tasks_data:
+    for idx, task_data in enumerate(tasks_data):
         config = _apply_shortcuts(task_data, resolved_shortcuts)
 
         rules_data = config.get("rules", {})
@@ -231,8 +269,14 @@ def _create_tasks_from_config(
         elif not isinstance(source_val, dict):
             config["source"] = {}
 
+        # Generate stable task_id if not provided (for better cache management)
+        # Users can manually specify task_id in config to override this
+        if "task_id" not in config or config["task_id"] is None:
+            config["task_id"] = _generate_stable_task_id(config)
+            generated_indices.append(idx)  # Mark this task as having generated task_id
+
         tasks.append(TranslationTask(**config))
-    return tasks
+    return tasks, generated_indices
 
 
 class GlocalConfig(BaseModel):
@@ -240,25 +284,30 @@ class GlocalConfig(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    project_root: str | None = None
     providers: dict[str, ProviderSettings] = Field(default_factory=dict)
     shortcuts: dict[str, Any] = Field(default_factory=dict)
     tasks: list[TranslationTask] = Field(default_factory=list)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "GlocalConfig":
-        """Create a GlocalConfig object from a dictionary, with validation for v2.1 format."""
+    def from_dict(cls, data: dict[str, Any]) -> tuple["GlocalConfig", list[int]]:
+        """
+        Create a GlocalConfig object from a dictionary, with validation for v2.1 format.
+
+        Returns:
+            A tuple of (config, generated_indices) where generated_indices contains
+            the indices of tasks that had their task_id auto-generated.
+
+        """
+        providers_data = data.get("providers", {})
+        providers = _build_providers_from_dict(providers_data)
+
+        shortcuts = data.get("shortcuts", {})
+
+        tasks_data = data.get("tasks", [])
+        tasks, generated_indices = _create_tasks_from_config(tasks_data, shortcuts)
+
         try:
-            providers_data = data.get("providers", {})
-            providers = _build_providers_from_dict(providers_data)
-
-            shortcuts = data.get("shortcuts", {})
-
-            tasks_data = data.get("tasks", [])
-            tasks = _create_tasks_from_config(tasks_data, shortcuts)
-
-            return cls(
-                project_root=data.get("project_root"),
+            config = cls(
                 providers=providers,
                 shortcuts=shortcuts,
                 tasks=tasks,
@@ -266,6 +315,8 @@ class GlocalConfig(BaseModel):
         except ValidationError as e:
             msg = f"Invalid or missing configuration: {e}"
             raise ValueError(msg) from e
+        else:
+            return config, generated_indices
 
 
 def _build_providers_from_dict(providers_data: dict[str, Any]) -> dict[str, ProviderSettings]:
@@ -301,9 +352,79 @@ def _construct_scalar(loader: StrictSingleQuoteLoader, node: yaml.ScalarNode) ->
 StrictSingleQuoteLoader.add_constructor("tag:yaml.org,2002:str", _construct_scalar)
 
 
+def _write_task_ids_to_config(
+    config_path: Path,
+    tasks: list[TranslationTask],
+    generated_indices: list[int],
+) -> None:
+    """
+    Write auto-generated task_ids back to the configuration file.
+
+    This function uses ruamel.yaml to preserve the original formatting,
+    comments, and structure of the YAML file.
+
+    Args:
+        config_path: Path to the configuration file
+        tasks: List of TranslationTask objects with task_ids
+        generated_indices: Indices of tasks that had their task_id auto-generated
+
+    Note:
+        Only updates tasks whose indices are in generated_indices.
+        If the write fails, logs a warning but does not raise an exception
+        to avoid disrupting the main workflow.
+
+    """
+    if not generated_indices:
+        # No task_ids were generated, nothing to write
+        return
+
+    try:
+        # Use ruamel.yaml to preserve formatting and comments
+        yaml_handler = YAML()
+        yaml_handler.preserve_quotes = True
+        yaml_handler.default_flow_style = False
+
+        # Read the current config file
+        with config_path.open(encoding="utf-8") as f:
+            config_data = yaml_handler.load(f)
+
+        # Update only the tasks that had task_id generated
+        if "tasks" in config_data and isinstance(config_data["tasks"], list):
+            for idx in generated_indices:
+                if idx < len(config_data["tasks"]) and idx < len(tasks):
+                    # Add task_id to the config data
+                    config_data["tasks"][idx]["task_id"] = tasks[idx].task_id
+                    logger.info(
+                        "Auto-generated task_id for task '%s': %s",
+                        tasks[idx].name,
+                        tasks[idx].task_id,
+                    )
+
+        # Write back to file
+        with config_path.open("w", encoding="utf-8") as f:
+            yaml_handler.dump(config_data, f)
+
+        logger.info(
+            "Successfully wrote %d task_id(s) back to %s",
+            len(generated_indices),
+            config_path,
+        )
+
+    except (OSError, ValueError, TypeError) as e:
+        # Log warning but don't raise - this is a convenience feature, not critical
+        logger.warning(
+            "Failed to write task_ids back to config file %s: %s. This will not affect translation functionality.",
+            config_path,
+            e,
+        )
+
+
 def load_config(config_path: str) -> GlocalConfig:
     """
     Load, parse, and validate the YAML configuration file.
+
+    This function will automatically write back any auto-generated task_ids
+    to the configuration file for persistence across runs.
 
     Args:
         config_path: The path to the config.yaml file.
@@ -333,7 +454,8 @@ def load_config(config_path: str) -> GlocalConfig:
         if not isinstance(data, dict):
             _raise_type_error("Config file must be a YAML mapping (dictionary).")
 
-        return GlocalConfig.from_dict(data)
+        # from_dict() returns (config, generated_indices)
+        config, generated_indices = GlocalConfig.from_dict(data)
 
     except yaml.YAMLError as e:
         msg = f"Error parsing YAML config file: {e}"
@@ -341,3 +463,7 @@ def load_config(config_path: str) -> GlocalConfig:
     except (AttributeError, KeyError, TypeError, ValueError) as e:
         msg = f"Invalid or missing configuration: {e}"
         raise ValueError(msg) from e
+    else:
+        # Write back auto-generated task_ids to the config file
+        _write_task_ids_to_config(path, config.tasks, generated_indices)
+        return config

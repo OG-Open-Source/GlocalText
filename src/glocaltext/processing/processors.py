@@ -22,7 +22,6 @@ Core Components:
 import hashlib
 import json
 import logging
-import os
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -32,15 +31,13 @@ from typing import Any
 import regex
 import yaml
 
+from glocaltext import paths
 from glocaltext.models import ExecutionContext, TextMatch
 from glocaltext.translate import apply_terminating_rules, process_matches
 from glocaltext.types import TranslationTask
 
 # Configure logging
 logger = logging.getLogger(__name__)
-
-# Define constants
-CACHE_FILE_NAME = ".glocaltext_cache.json"
 
 
 class Processor(ABC):
@@ -80,7 +77,11 @@ def _exclude_files(
 ) -> set[Path]:
     """Exclude files based on task's exclude patterns and output directory."""
     # Exclude files based on 'exclude' patterns
-    explicitly_excluded = {path for pattern in task.source.exclude for path in base_path.rglob(pattern)}
+    try:
+        explicitly_excluded = {path for pattern in task.source.exclude for path in base_path.rglob(pattern)}
+    except Exception:
+        logger.exception("Error during file exclusion pattern resolution. Proceeding with included files only.")
+        explicitly_excluded = set()
     candidate_files = included_files - explicitly_excluded
 
     # Exclude files in the output directory
@@ -135,23 +136,29 @@ class CaptureProcessor(Processor):
 
     def process(self, context: ExecutionContext) -> None:
         """Find files and capture all text matches within them."""
-        base_path = Path(context.config.project_root) if context.config.project_root else Path.cwd()
-        logger.debug("Using base path for file search: %s", base_path)
+        try:
+            base_path = paths.find_project_root()
+            logger.debug("Using project root for file search: %s", base_path)
 
-        context.files_to_process = list(_find_files(context.task, base_path))
-        logger.info("Task '%s': Found %d files to process.", context.task.name, len(context.files_to_process))
+            context.files_to_process = list(_find_files(context.task, base_path))
+            logger.info("Task '%s': Found %d files to process.", context.task.name, len(context.files_to_process))
 
-        for file_path in context.files_to_process:
-            try:
-                content = file_path.read_text("utf-8")
-                file_matches = _extract_matches_from_content(content, file_path, context.task)
-                context.all_matches.extend(file_matches)
-            except OSError:  # noqa: PERF203
-                logger.exception("Could not read file %s", file_path)
-            except Exception:
-                logger.exception("An unexpected error occurred while processing %s", file_path)
+            for file_path in context.files_to_process:
+                try:
+                    content = file_path.read_text("utf-8")
+                    file_matches = _extract_matches_from_content(content, file_path, context.task)
+                    context.all_matches.extend(file_matches)
+                except OSError:  # noqa: PERF203
+                    logger.exception("Could not read file %s", file_path)
+                except Exception:
+                    logger.exception("An unexpected error occurred while processing %s", file_path)
 
-        logger.info("Task '%s': Captured %d total text matches.", context.task.name, len(context.all_matches))
+            logger.info("Task '%s': Captured %d total text matches.", context.task.name, len(context.all_matches))
+        except FileNotFoundError:
+            logger.exception(
+                "Could not find project root based on '%s' anchor. Cannot capture files.",
+                paths.OGOS_SUBDIR,
+            )
 
 
 class TerminatingRuleProcessor(Processor):
@@ -171,35 +178,36 @@ class TerminatingRuleProcessor(Processor):
         )
 
 
-def _get_task_cache_path(files: list[Path], task: TranslationTask) -> Path:
-    """Determine the cache path with a new priority order."""
+def _get_task_cache_path(task: TranslationTask) -> Path:
+    """
+    Get the cache path for a task, respecting custom cache_path if provided.
+
+    If task.cache_path is specified, it's treated as a directory path relative
+    to the project root. Otherwise, uses the default .ogos/glocaltext/caches/ directory.
+
+    The cache filename is always based on the task's UUID (task_id), not its name,
+    ensuring stability even when the task name changes.
+    """
     if task.cache_path:
-        p = Path(task.cache_path)
-        return p / CACHE_FILE_NAME
+        # User-specified custom cache directory (relative to project root)
+        try:
+            cache_dir = paths.find_project_root() / task.cache_path
+        except FileNotFoundError:
+            logger.warning("Could not determine project root. Falling back to default cache directory.")
+            cache_dir = paths.get_cache_dir()
+    else:
+        # Default cache directory
+        cache_dir = paths.get_cache_dir()
 
-    manual_cache_path_cwd = Path.cwd() / CACHE_FILE_NAME
-    if manual_cache_path_cwd.exists():
-        logger.debug("Found manual cache file at: %s", manual_cache_path_cwd)
-        return manual_cache_path_cwd
+    paths.ensure_dir_exists(cache_dir)
 
-    if not files:
-        return manual_cache_path_cwd
-
-    if len(files) == 1:
-        return files[0].parent / CACHE_FILE_NAME
-
-    common_path_str = os.path.commonpath([str(p) for p in files])
-    common_path = Path(common_path_str)
-
-    if common_path.is_file():
-        common_path = common_path.parent
-
-    return common_path / CACHE_FILE_NAME
+    # Use task_id (UUID) as the filename for stability
+    return cache_dir / f"{task.task_id}.json"
 
 
-def _load_cache(cache_path: Path, task_name: str) -> dict[str, str]:
+def _load_cache(cache_path: Path, task_id: str) -> dict[str, str]:
     """Safely load the cache for a specific task from the cache file."""
-    logger.debug("Loading cache for task '%s' from: %s", task_name, cache_path)
+    logger.debug("Loading cache for task_id '%s' from: %s", task_id, cache_path)
     if not cache_path.exists():
         logger.debug("Cache file not found.")
         return {}
@@ -207,8 +215,8 @@ def _load_cache(cache_path: Path, task_name: str) -> dict[str, str]:
         # Open in binary mode and let json.load handle decoding from UTF-8 (with BOM support)
         with cache_path.open("rb") as f:
             full_cache = json.load(f)
-        task_cache = full_cache.get(task_name, {})
-        logger.debug("Loaded %d items from cache for task '%s'.", len(task_cache), task_name)
+        task_cache = full_cache.get(task_id, {})
+        logger.debug("Loaded %d items from cache for task_id '%s'.", len(task_cache), task_id)
     except (OSError, json.JSONDecodeError):
         logger.warning("Could not read or parse cache file at %s.", cache_path)
         return {}
@@ -256,14 +264,18 @@ class CacheProcessor(Processor):
 
     def process(self, context: ExecutionContext) -> None:
         """Check the cache for translations and partition the matches."""
-        # This processor is now the first filter after Capture.
-        # It should operate on all matches and pass the remainder to the next stage.
         if not context.task.incremental:
             context.matches_to_translate = context.all_matches
             return
 
-        cache_path = _get_task_cache_path(context.files_to_process, context.task)
-        cache = _load_cache(cache_path, context.task.name)
+        try:
+            cache_path = _get_task_cache_path(context.task)
+            paths.ensure_dir_exists(cache_path.parent)
+            cache = _load_cache(cache_path, context.task.task_id)
+        except FileNotFoundError:
+            logger.warning("Could not determine cache path because project root was not found. Proceeding without cache.")
+            context.matches_to_translate = context.all_matches
+            return
 
         # Partition all captured matches, not just a subset.
         matches_to_translate, cached_matches = _partition_matches_by_cache(context.all_matches, cache)
@@ -333,11 +345,11 @@ class TranslationProcessor(Processor):
         )
 
 
-def _update_cache(cache_path: Path, task_name: str, matches_to_cache: list[TextMatch]) -> None:
+def _update_cache(cache_path: Path, task_id: str, matches_to_cache: list[TextMatch]) -> None:
     """Update the cache file by merging new translations."""
     logger.debug(
-        "Updating cache for task '%s' at: %s with %d new items.",
-        task_name,
+        "Updating cache for task_id '%s' at: %s with %d new items.",
+        task_id,
         cache_path,
         len(matches_to_cache),
     )
@@ -352,12 +364,12 @@ def _update_cache(cache_path: Path, task_name: str, matches_to_cache: list[TextM
             except (json.JSONDecodeError, OSError):
                 logger.warning("Cache file %s is corrupted or unreadable. A new one will be created.", cache_path)
 
-        task_cache = full_cache.get(task_name, {})
+        task_cache = full_cache.get(task_id, {})
         new_entries = {calculate_checksum(match.original_text): match.translated_text for match in matches_to_cache if match.translated_text is not None}
 
         if new_entries:
             task_cache.update(new_entries)
-            full_cache[task_name] = task_cache
+            full_cache[task_id] = task_cache
             # Always write with UTF-8
             with cache_path.open("w", encoding="utf-8") as f:
                 json.dump(full_cache, f, ensure_ascii=False, indent=4)
@@ -379,9 +391,12 @@ class CacheUpdateProcessor(Processor):
 
         matches_to_cache = [m for m in context.matches_to_translate if m.translated_text is not None and m.provider not in ("cached", "rule", "skipped")]
         if matches_to_cache:
-            cache_path = _get_task_cache_path(context.files_to_process, context.task)
-            logger.debug("Updating cache with %d new, API-translated items.", len(matches_to_cache))
-            _update_cache(cache_path, context.task.name, matches_to_cache)
+            try:
+                cache_path = _get_task_cache_path(context.task)
+                logger.debug("Updating cache with %d new, API-translated items.", len(matches_to_cache))
+                _update_cache(cache_path, context.task.task_id, matches_to_cache)
+            except FileNotFoundError:
+                logger.exception("Could not update cache because project root was not found.")
 
 
 def _get_output_path(file_path: Path, task: TranslationTask) -> Path | None:
@@ -397,6 +412,7 @@ def _get_output_path(file_path: Path, task: TranslationTask) -> Path | None:
             stem=file_path.stem,
             source_lang=task.source_lang,
             target_lang=task.target_lang,
+            extension=file_path.suffix.lstrip("."),
         )
         return output_dir / new_name
     return output_dir / file_path.name

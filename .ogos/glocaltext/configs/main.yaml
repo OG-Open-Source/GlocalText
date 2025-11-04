@@ -6,11 +6,6 @@
 # providers, and the specific tasks to be executed.
 # ==============================================================================
 
-# (Optional) The root directory of your project. All relative paths in the
-# configuration (like in 'source' or 'output') will be resolved from here.
-# If not specified, it defaults to the directory where you run the command.
-project_root: '.'
-
 # ------------------------------------------------------------------------------
 #  1. Provider Settings
 #
@@ -22,8 +17,8 @@ providers:
     gemini:
         # API key can be set here, but it's recommended to use an environment variable
         # (e.g., GEMINI_API_KEY) for better security.
-        api_key: 'YOUR_GEMINI_API_KEY'
-        model: 'gemini-2.5-flash-lite'
+        api_key: YOUR_GEMINI_API_KEY
+        model: gemini-2.5-flash-lite
 
         # Intelligent scheduling and batching settings to respect API rate limits.
         # All are optional and have sensible defaults.
@@ -39,8 +34,8 @@ providers:
 
     # Example for Google Gemma, which also uses the official Google AI API.
     gemma:
-        api_key: 'YOUR_GEMMA_API_KEY' # Often the same as the Gemini key
-        model: 'gemma-3-27b-it'
+        api_key: YOUR_GEMMA_API_KEY # Often the same as the Gemini key
+        model: gemma-3-27b-it
 
     # The 'google' provider uses the deep-translator library and does not require
     # any configuration under the 'providers' section to work.
@@ -55,46 +50,50 @@ providers:
 shortcuts:
     # '.defaults' is a special shortcut that is implicitly inherited by ALL tasks.
     .defaults:
-        translator: 'gemini'
-        source_lang: 'en'
+        translator: gemini
+        source_lang: en
         incremental: true # Enable caching to avoid re-translating unchanged text.
-        cache_path: '.glocaltext_cache' # Optional: Specify a central cache directory.
+        # task_id: my-custom-id # (Optional) Custom task identifier for cache file naming.
+        # If not specified, a stable UUID will be auto-generated based on task configuration.
+        # cache_path: custom_cache # (Optional) Custom cache directory relative to project root.
+        # Defaults to '.ogos/glocaltext/caches/' if not specified.
+        # This is a DIRECTORY path. Cache files are named <task_id>.json
 
     # A reusable ruleset for protecting common variables in scripts.
     .script_rules:
         rules:
             protect:
-                - '\$\w+|\$\{\w+\}' # Protects $VAR and ${VAR}
+                - \$\w+|\$\{\w+\} # Protects $VAR and ${VAR}
 
     # A custom shortcut for translating script files.
     .scripts:
-        extends: '.defaults' # Inherit from .defaults
+        extends: .defaults # Inherit from .defaults
         source:
             include: ['**/*.sh', '**/*.ps1']
         extraction_rules:
-            - 'echo "([^"]*)"'
+            - echo "([^"]*)"
 
 # ------------------------------------------------------------------------------
 #  3. Tasks: The core translation jobs
 # ------------------------------------------------------------------------------
 tasks:
-    - name: 'Translate Shell Scripts to Traditional Chinese'
+    - name: Translate Shell Scripts to Traditional Chinese
       enabled: true # You can temporarily disable a task by setting this to false.
-      extends: '.scripts' # Inherit all settings from the '.scripts' shortcut
-      target_lang: 'zh-TW'
+      extends: .scripts # Inherit all settings from the '.scripts' shortcut
+      target_lang: zh-TW
       # You can add or override settings from the shortcut.
       # Rules are deep-merged. Here, we inherit the 'protect' rules from
       # the '.script_rules' shortcut and add 'skip' and 'replace' rules.
       rules:
-          extends: '.script_rules'
+          extends: .script_rules
           skip:
-              - "^Don't translate me$"
+              - ^Don't translate me$
           replace:
               'User: (.*)': '使用者: \1'
 
-    - name: 'Translate Markdown Docs to Japanese'
-      extends: '.defaults' # Inherit only the base settings
-      target_lang: 'ja'
+    - name: Translate Markdown Docs to Japanese
+      extends: .defaults # Inherit only the base settings
+      target_lang: ja
       source:
           include: ['docs/**/*.md']
           exclude: ['docs/internal/**'] # Exclude specific subdirectories.
@@ -102,10 +101,13 @@ tasks:
           - '`([^`]+)`' # Extract content from inline code blocks.
       output:
           in_place: false # Write to a new directory instead of modifying original files.
-          path: 'output/ja'
+          path:
+              output/ja # DIRECTORY path relative to project root where files will be saved.
+              # This creates: <project_root>/output/ja/<filename>
+              # Note: Even names like '.cache.json' will be treated as a directory.
           # Optional: Define a custom filename structure.
-          # Placeholders: {stem}, {source_lang}, {target_lang}
+          # Placeholders: {stem}, {source_lang}, {target_lang}, {extension}
           filename: '{stem}.{target_lang}.md'
       # Prompts can be used to add context for the AI translator.
       prompts:
-          system: 'You are a professional translator specializing in technical documentation.'
+          system: You are a professional translator specializing in technical documentation.

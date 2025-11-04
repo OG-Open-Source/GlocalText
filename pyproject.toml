@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "GlocalText"
-version = "4.0.0b1"
+version = "4.0.0b2"
 description = "A config-driven script to batch translate files using various providers."
 authors = ["OG-Open-Source"]
 license = "MIT"
@@ -17,6 +17,7 @@ python = "^3.10"
 deep-translator = "^1.11.4"
 google-genai = "^1.46.0"
 pyyaml = "^6.0.3"
+ruamel-yaml = "^0.18.0"
 regex = "^2025.10.23"
 pydantic = "^2.12.3"
 tenacity = "^9.1.2"

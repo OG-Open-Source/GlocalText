@@ -18,9 +18,8 @@ class GeminiTranslator(BaseGenAITranslator):
     and expects a structured JSON response from the model.
     """
 
-    @property
     def _default_model_name(self) -> str:
-        """The default model name to use if not specified in settings."""
+        """Return the default model name to use if not specified in settings."""
         return "gemini-flash-lite-latest"
 
     def _get_generation_config(self) -> types.GenerateContentConfig:
