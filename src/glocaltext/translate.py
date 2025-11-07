@@ -3,6 +3,7 @@
 import logging
 import time
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import Any
 
 import regex
@@ -19,6 +20,22 @@ logger = logging.getLogger(__name__)
 _translator_cache: dict[str, BaseTranslator] = {}
 # A session-level counter for requests-per-day limits.
 _rpd_session_counts: dict[str, int] = defaultdict(int)
+
+
+@dataclass
+class ProcessingContext:
+    """
+    Encapsulates the context for processing translation matches.
+
+    This reduces function parameter count and improves maintainability
+    by grouping related configuration into a single object.
+    """
+
+    task: TranslationTask
+    translator: BaseTranslator
+    provider_name: str
+    debug: bool
+    dry_run: bool = False
 
 
 def _get_translator(provider_name: str, settings: ProviderSettings | None) -> BaseTranslator | None:
@@ -117,9 +134,15 @@ def _handle_replace_action(text: str, matched_value: str, rule: Rule) -> str:
     if rule.action.value is None:
         return text  # Should not happen due to pydantic validation
 
+    logger.debug("[REPLACE ACTION] Input text: '%s'", text[:200])
+    logger.debug("[REPLACE ACTION] Pattern to match: '%s'", matched_value)
+    logger.debug("[REPLACE ACTION] Replacement value: '%s'", rule.action.value)
+
     try:
         # regex.sub correctly handles backreferences like \1, \g<name>, etc.
         modified_text = regex.sub(matched_value, rule.action.value, text, regex.DOTALL)
+        logger.debug("[REPLACE ACTION] Output text: '%s'", modified_text[:200])
+        logger.debug("[REPLACE ACTION] Text changed: %s", text != modified_text)
     except regex.error as e:
         logger.warning("Invalid regex substitution with pattern '%s': %s", matched_value, e)
         return text
@@ -184,6 +207,7 @@ def _handle_rule_action(
 
 
 def _apply_pre_processing_rules(original_text: str, matches: list[TextMatch], task: TranslationTask) -> tuple[str, dict[str, str]]:
+    logger.debug("[Pre-processing Rules] Function called with %d rules", len(task.rules))
     text_to_process = original_text
     protected_map: dict[str, str] = {}
 
@@ -191,16 +215,28 @@ def _apply_pre_processing_rules(original_text: str, matches: list[TextMatch], ta
     # A terminating 'replace' is one that fully matches the text or replaces with an empty string.
     # We apply all other 'replace' rules here as pre-processors.
     for rule in task.rules:
+        logger.debug("[Pre-processing Rules] Processing rule: action=%s", rule.action.action)
         if rule.action.action == "protect":
             # 'protect' rules are always pre-processing.
             text_to_process, _ = _handle_rule_action(text_to_process, list(matches), rule, protected_map)
         elif rule.action.action == "replace":
             # A 'replace' is pre-processing if it's NOT a full match.
             patterns = [rule.match.regex] if isinstance(rule.match.regex, str) else rule.match.regex
+            logger.debug("[Pre-processing Replace] Rule pattern: %s -> action value: %s", patterns, rule.action.value)
+
             is_full_match_rule = any(regex.fullmatch(p, original_text, regex.DOTALL) for p in patterns)
+            logger.debug("[Pre-processing Replace] is_full_match_rule: %s", is_full_match_rule)
+            logger.debug("[Pre-processing Replace] Text before: %s...", text_to_process[:100])
 
             if not is_full_match_rule:
+                logger.debug("[Pre-processing Replace] Entering replace branch (not full match)")
+                logger.debug("[Pre-processing Replace] Calling _handle_rule_action with text: '%s...'", text_to_process[:100])
+                text_before = text_to_process
                 text_to_process, _ = _handle_rule_action(text_to_process, list(matches), rule, protected_map)
+                logger.debug("[Pre-processing Replace] Text after: %s...", text_to_process[:100])
+                logger.debug("[Pre-processing Replace] Text actually changed: %s", text_before != text_to_process)
+            else:
+                logger.debug("[Pre-processing Replace] Skipping replace (is full match rule)")
 
     return text_to_process, protected_map
 
@@ -229,8 +265,10 @@ def _try_terminate_with_replace(match: TextMatch, text: str, rule: Rule, matched
 
 def _is_match_terminated(match: TextMatch, rules: list[Rule]) -> bool:
     """Check if a match should be terminated by a 'skip' or a 'full-match replace' rule."""
+    logger.debug("[Terminating Check] Checking if match should be terminated: '%s...'", match.original_text[:50])
     text_to_process = match.original_text
     for rule in rules:
+        logger.debug("[Terminating Check] Testing rule: action=%s, regex=%s", rule.action.action, rule.match.regex)
         if rule.action.action not in ("skip", "replace"):
             continue
 
@@ -253,14 +291,19 @@ def apply_terminating_rules(
     task: TranslationTask,
 ) -> tuple[list[TextMatch], list[TextMatch]]:
     """Apply terminating rules (skip, or replace resulting in empty) and partition matches."""
+    logger.debug("[Terminating Rules] Function called with %d matches and %d rules", len(matches), len(task.rules))
     unhandled_matches: list[TextMatch] = []
     terminated_matches: list[TextMatch] = []
     terminating_rules = [r for r in task.rules if r.action.action in ("skip", "replace")]
+    logger.debug("[Terminating Rules] Found %d terminating rules (skip/replace)", len(terminating_rules))
 
     if not terminating_rules:
+        logger.debug("[Terminating Rules] No terminating rules found, returning all matches as unhandled")
         return matches, []
 
+    logger.debug("[Terminating Rules] Starting to check %d matches against terminating rules", len(matches))
     for match in matches:
+        logger.debug("[Terminating Rules] Checking match: '%s...'", match.original_text[:50])
         if _is_match_terminated(match, terminating_rules):
             terminated_matches.append(match)
         else:
@@ -524,11 +567,7 @@ def _translate_and_update_matches(  # noqa: PLR0913
 
 def _process_genai_matches(
     matches: list[TextMatch],
-    task: TranslationTask,
-    translator: BaseTranslator,
-    provider_name: str,
-    *,
-    debug: bool,
+    context: ProcessingContext,
 ) -> None:
     """Process matches using a GenAI provider with batching and rule processing."""
     if not matches:
@@ -539,14 +578,29 @@ def _process_genai_matches(
         unique_texts[match.original_text].append(match)
     logger.info("Found %d unique text strings to process for API translation.", len(unique_texts))
 
-    pre_processed_items = _apply_translation_rules(unique_texts, task)
+    # Always apply pre-processing rules (protect and replace), even in dry-run mode
+    logger.debug("[Pre-processing] Applying translation rules to %d unique texts.", len(unique_texts))
+    pre_processed_items = _apply_translation_rules(unique_texts, context.task)
     texts_to_translate_api = list(dict.fromkeys(item.text_to_process for item in pre_processed_items if item.text_to_process and item.text_to_process.strip()))
 
     if not texts_to_translate_api:
         logger.info("All texts were handled by pre-processing or were empty. No API call needed.")
         return
 
-    provider_settings = translator.settings or ProviderSettings()
+    # In dry-run mode, skip actual API translation but mark matches appropriately
+    if context.dry_run:
+        logger.info("[DRY RUN] Pre-processing rules applied. Skipping actual API translation for %d texts.", len(texts_to_translate_api))
+        item_map = {item.text_to_process: item for item in pre_processed_items}
+        for text_to_process in texts_to_translate_api:
+            processed_item = item_map.get(text_to_process)
+            if processed_item:
+                for match in processed_item.matches:
+                    match.provider = "dry_run_skipped"
+                    # In dry-run, show the pre-processed text (with rules applied) as the result
+                    match.translated_text = processed_item.text_to_process
+        return
+
+    provider_settings = context.translator.settings or ProviderSettings()
     rpm = provider_settings.rpm
     tpm = provider_settings.tpm
     rpd = provider_settings.rpd
@@ -555,66 +609,70 @@ def _process_genai_matches(
     if rpm is None or tpm is None:
         logger.info(
             "Provider '%s' is not configured for intelligent scheduling (RPM/TPM). Sending as a single batch.",
-            provider_name,
+            context.provider_name,
         )
         batches = [texts_to_translate_api]
     else:
         logger.debug(
             "Provider '%s' configured for intelligent scheduling: RPM=%s, TPM=%s, RPD=%s.",
-            provider_name,
+            context.provider_name,
             rpm,
             tpm,
             rpd or "N/A",
         )
         batches = _create_batches(
-            translator=translator,
+            translator=context.translator,
             texts_to_translate=texts_to_translate_api,
             batch_size=batch_size,
             tpm=tpm,
-            prompts=task.prompts if task.prompts else None,
+            prompts=context.task.prompts if context.task.prompts else None,
         )
 
     _translate_and_update_matches(
-        translator,
+        context.translator,
         batches,
         pre_processed_items,
-        task,
-        provider_name,
+        context.task,
+        context.provider_name,
         rpm=rpm,
         rpd=rpd,
-        debug=debug,
+        debug=context.debug,
     )
 
 
 def _process_simple_matches(
     matches: list[TextMatch],
-    task: TranslationTask,
-    translator: BaseTranslator,
-    provider_name: str,
-    *,
-    debug: bool,
+    context: ProcessingContext,
 ) -> None:
     """Process matches using a simple, non-batching, non-GenAI translator."""
     if not matches:
         return
 
+    # In dry-run mode, skip actual API translation
+    if context.dry_run:
+        logger.info("[DRY RUN] Skipping simple translator API calls for %d matches.", len(matches))
+        for match in matches:
+            match.provider = "dry_run_skipped"
+            match.translated_text = match.original_text
+        return
+
     # Simple providers handle one text at a time.
     for match in matches:
         try:
-            results = translator.translate(
+            results = context.translator.translate(
                 texts=[match.original_text],
-                target_language=task.target_lang,
-                source_language=task.source_lang,
-                debug=debug,
+                target_language=context.task.target_lang,
+                source_language=context.task.source_lang,
+                debug=context.debug,
                 prompts=None,  # Simple providers don't use prompts
             )
             if results:
                 match.translated_text = results[0].translated_text
                 match.tokens_used = results[0].tokens_used
-                match.provider = provider_name
+                match.provider = context.provider_name
         except Exception:  # noqa: PERF203
-            logger.exception("Error translating text '%s' with %s", match.original_text, provider_name)
-            match.provider = f"error_{provider_name}"
+            logger.exception("Error translating text '%s' with %s", match.original_text, context.provider_name)
+            match.provider = f"error_{context.provider_name}"
 
 
 def process_matches(
@@ -623,12 +681,21 @@ def process_matches(
     config: GlocalConfig,
     *,
     debug: bool,
+    dry_run: bool = False,
 ) -> None:
     """
     Process a list of text matches for a given translation task.
 
     This function orchestrates the main translation workflow by dispatching
     to the appropriate handler based on the selected provider type.
+
+    Args:
+        matches: List of text matches to process.
+        task: The translation task configuration.
+        config: Global configuration.
+        debug: Whether to enable debug mode.
+        dry_run: If True, apply pre-processing rules but skip actual API translation.
+
     """
     provider_name = _select_provider(task, list(TRANSLATOR_MAPPING.keys()))
     translator = get_translator(provider_name, config)
@@ -639,9 +706,18 @@ def process_matches(
             match.provider = "initialization_error"
         return
 
+    # Create processing context
+    context = ProcessingContext(
+        task=task,
+        translator=translator,
+        provider_name=provider_name,
+        debug=debug,
+        dry_run=dry_run,
+    )
+
     # --- Dispatch based on provider type ---
     if provider_name in ("gemini", "gemma"):
-        _process_genai_matches(matches, task, translator, provider_name, debug=debug)
+        _process_genai_matches(matches, context)
     else:
         # Fallback for simple, non-GenAI translators like 'google' or 'mock'
-        _process_simple_matches(matches, task, translator, provider_name, debug=debug)
+        _process_simple_matches(matches, context)

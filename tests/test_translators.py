@@ -25,10 +25,10 @@ class TestMockTranslator(unittest.TestCase):
         texts = ["Hello", "World"]
         target_language = "fr"
         results = translator.translate(texts, target_language=target_language)
-        assert len(results) == 2  # noqa: PLR2004
+        assert len(results) == 2
         assert results[0].translated_text == "[MOCK] Hello"
         assert results[1].translated_text == "[MOCK] World"
-        assert results[0].tokens_used == 5  # noqa: PLR2004
+        assert results[0].tokens_used == 5
 
     def test_count_tokens_returns_actual_length(self) -> None:
         """2. Token Counting: Returns the actual token count based on len()."""
@@ -98,11 +98,11 @@ class TestBaseGenAITranslator(unittest.TestCase):
         mock_client_instance.models.generate_content.return_value = mock_response
         translator = ConcreteTestTranslator(settings=ProviderSettings(api_key="fake-key"))
         results = translator.translate(["text1", "text2", "text3"], "en")
-        assert len(results) == 3  # noqa: PLR2004
+        assert len(results) == 3
         assert results[0].translated_text == "parsed:Success"
-        assert results[0].tokens_used == 3  # noqa: PLR2004
-        assert results[1].tokens_used == 3  # noqa: PLR2004
-        assert results[2].tokens_used == 4  # noqa: PLR2004
+        assert results[0].tokens_used == 3
+        assert results[1].tokens_used == 3
+        assert results[2].tokens_used == 4
 
     @patch("google.genai.Client")
     def test_count_tokens_success_and_failure(self, mock_genai_client: MagicMock) -> None:
@@ -111,7 +111,7 @@ class TestBaseGenAITranslator(unittest.TestCase):
         mock_client_instance.models.count_tokens.return_value = MagicMock(total_tokens=42)
         translator = ConcreteTestTranslator(settings=ProviderSettings(api_key="fake-key"))
         token_count = translator.count_tokens(["some text"])
-        assert token_count == 42  # noqa: PLR2004
+        assert token_count == 42
         mock_client_instance.models.count_tokens.side_effect = api_core_exceptions.GoogleAPICallError("Count failed")
         token_count_fail = translator.count_tokens(["some text"])
         assert token_count_fail == 0
@@ -127,7 +127,7 @@ class TestGoogleTranslator(unittest.TestCase):
         mock_instance.translate_batch.return_value = ["Bonjour", "Monde"]
         translator = GoogleTranslator(settings=ProviderSettings())
         results = translator.translate(["Hello", "World"], "fr")
-        assert len(results) == 2  # noqa: PLR2004
+        assert len(results) == 2
         assert results[0].translated_text == "Bonjour"
         assert results[1].translated_text == "Monde"
         token_count = results[0].tokens_used

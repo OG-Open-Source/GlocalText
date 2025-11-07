@@ -327,21 +327,22 @@ class TranslationProcessor(Processor):
                 match.provider = "skipped_same_lang"
             return
 
-        if context.is_dry_run:
-            logger.info("[DRY RUN] Skipping API translation for %d matches.", len(context.matches_to_translate))
-            for match in context.matches_to_translate:
-                match.provider = "dry_run_skipped"
-            return
-
         if not context.matches_to_translate:
             return
 
-        logger.info("Processing %d matches for API translation.", len(context.matches_to_translate))
+        # In dry-run mode, still process matches to apply pre-processing rules,
+        # but skip actual API translation within process_matches().
+        if context.is_dry_run:
+            logger.info("[DRY RUN] Processing matches with rules but skipping API translation.")
+        else:
+            logger.info("Processing %d matches for API translation.", len(context.matches_to_translate))
+
         process_matches(
             matches=context.matches_to_translate,
             task=context.task,
             config=context.config,
             debug=context.is_debug,
+            dry_run=context.is_dry_run,
         )
 
 

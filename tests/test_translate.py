@@ -188,7 +188,7 @@ class TestProcessMatches(unittest.TestCase):
         with patch("time.sleep") as mock_sleep:
             process_matches(matches, self.mock_task, self.mock_config, debug=False)
 
-        assert self.mock_translator.translate.call_count == 2  # noqa: PLR2004
+        assert self.mock_translator.translate.call_count == 2
         assert self.mock_translator.translate.call_args_list[0].kwargs["texts"] == ["heavy text"]
         assert self.mock_translator.translate.call_args_list[1].kwargs["texts"] == ["light text"]
         mock_sleep.assert_called_once_with(DELAY_SECONDS)
@@ -318,7 +318,7 @@ class TestBatchCreation(unittest.TestCase):
         texts = ["text1", "text2", "text3"]
         self.mock_translator.count_tokens.side_effect = lambda texts, _prompts: len(texts) * TOKENS_PER_TEXT_LIGHT
         batches = _create_smart_batches(self.mock_translator, texts, batch_size=EQUAL_BATCH_SIZE, tpm=TPM_LIMIT, prompts=None)
-        assert len(batches) == 2  # noqa: PLR2004
+        assert len(batches) == 2
         assert batches[0] == ["text1", "text2"]
         assert batches[1] == ["text3"]
 
@@ -327,7 +327,7 @@ class TestBatchCreation(unittest.TestCase):
         texts = ["t1", "t2", "t3"]
         self.mock_translator.count_tokens.side_effect = lambda texts, _prompts: len(texts) * TOKENS_PER_TEXT_SIMPLE
         batches = _create_smart_batches(self.mock_translator, texts, batch_size=SMALL_BATCH_SIZE, tpm=TPM_LIMIT, prompts=None)
-        assert len(batches) == 2  # noqa: PLR2004
+        assert len(batches) == 2
         assert batches[0] == ["t1", "t2"]
         assert batches[1] == ["t3"]
 

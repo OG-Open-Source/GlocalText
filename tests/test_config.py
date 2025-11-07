@@ -175,7 +175,7 @@ tasks:
         with patch("pathlib.Path.open", mock_open(read_data=yaml_content)), patch("pathlib.Path.is_file", return_value=True):
             config = load_config("dummy_path.yaml")
             task = config.tasks[0]
-            assert len(task.rules) == 3  # noqa: PLR2004
+            assert len(task.rules) == 3
             actions = {r.action.action for r in task.rules}
             assert "skip" in actions
             assert "protect" in actions
@@ -205,7 +205,7 @@ tasks:
         with patch("pathlib.Path.open", mock_open(read_data=yaml_content)), patch("pathlib.Path.is_file", return_value=True):
             config = load_config("dummy_path.yaml")
             task = config.tasks[0]
-            assert len(task.rules) == 3  # noqa: PLR2004
+            assert len(task.rules) == 3
             actions = {r.action.action for r in task.rules}
             assert actions == {"replace", "skip", "protect"}
 

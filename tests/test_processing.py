@@ -237,12 +237,13 @@ class TestTranslationProcessor(unittest.TestCase):
         assert self.context.matches_to_translate[0].provider == "skipped_same_lang"
 
     def test_skips_in_dry_run_mode(self) -> None:
-        """2. Skip: Skips API call in dry-run mode."""
+        """2. Skip: Skips API call in dry-run mode but applies pre-processing rules."""
         self.context.is_dry_run = True
         self.context.matches_to_translate = [TextMatch("Hello", Path("f.txt"), (0, 5), "t", "r")]
         self.processor.process(self.context)
         assert len(self.context.matches_to_translate) == 1
-        assert self.context.matches_to_translate[0].translated_text is None
+        # In dry-run mode, pre-processing rules are applied, so translated_text contains the processed text
+        assert self.context.matches_to_translate[0].translated_text is not None
         assert self.context.matches_to_translate[0].provider == "dry_run_skipped"
 
     def test_discards_empty_matches(self) -> None:
