@@ -32,6 +32,7 @@ import regex
 import yaml
 
 from glocaltext import paths
+from glocaltext.coverage import TextCoverage
 from glocaltext.models import ExecutionContext, TextMatch
 from glocaltext.translate import apply_terminating_rules, process_matches
 from glocaltext.types import TranslationTask
@@ -109,17 +110,25 @@ def _extract_matches_from_content(content: str, file_path: Path, task: Translati
     extraction_rules = task.extraction_rules or []
     for rule_pattern in extraction_rules:
         try:
-            found_matches = [
-                TextMatch(
-                    original_text=match.group(1),
-                    source_file=file_path,
-                    span=match.span(1),
-                    task_name=task.name,
-                    extraction_rule=rule_pattern,
-                )
-                for match in regex.finditer(rule_pattern, content, regex.MULTILINE, overlapped=True)
-                if match.groups()
-            ]
+            found_matches = []
+            for match in regex.finditer(rule_pattern, content, regex.MULTILINE, overlapped=True):
+                if match.groups():
+                    # Create coverage tracker initialized with the original text
+                    coverage = TextCoverage(content)
+                    # Add the range covered by this match
+                    coverage.add_range(match.start(1), match.end(1))
+
+                    # Create TextMatch with coverage
+                    text_match = TextMatch(
+                        original_text=match.group(1),
+                        source_file=file_path,
+                        span=match.span(1),
+                        task_name=task.name,
+                        extraction_rule=rule_pattern,
+                        coverage=coverage,
+                    )
+                    found_matches.append(text_match)
+
             matches.extend(found_matches)
         except regex.error as e:  # noqa: PERF203
             logger.warning(

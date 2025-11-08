@@ -3,9 +3,12 @@
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+if TYPE_CHECKING:
+    from glocaltext.coverage import TextCoverage
 
 
 @dataclass
@@ -78,6 +81,8 @@ class TextMatch:
         translated_text: The translated text. None if not yet translated.
         provider: The translation provider used (e.g., 'gemini', 'google', 'manual').
         tokens_used: The number of tokens consumed for the translation by an AI provider.
+        coverage: Optional coverage tracking for this match. Used to determine
+            if rules have fully covered the text, enabling translation skip optimization.
 
     """
 
@@ -90,6 +95,7 @@ class TextMatch:
     provider: str | None = None
     tokens_used: int | None = None
     match_id: str = field(default_factory=lambda: str(uuid.uuid4()), init=False, repr=False)
+    coverage: Optional["TextCoverage"] = None
 
     def __hash__(self) -> int:
         """Return the hash of the match instance."""
@@ -104,7 +110,12 @@ class TextMatch:
         return self.match_id == other.match_id
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert the dataclass instance to a JSON-serializable dictionary."""
+        """
+        Convert the dataclass instance to a JSON-serializable dictionary.
+
+        Note: coverage is intentionally excluded from serialization
+        as it's a runtime optimization detail, not persistent data.
+        """
         return {
             "match_id": self.match_id,
             "original_text": self.original_text,

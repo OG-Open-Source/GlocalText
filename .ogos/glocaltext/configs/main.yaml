@@ -18,30 +18,34 @@ providers:
         # API key can be set here, but it's recommended to use an environment variable
         # (e.g., GEMINI_API_KEY) for better security.
         api_key: YOUR_GEMINI_API_KEY
-        model: gemini-2.5-flash-lite
+        model:
+            gemini-2.5-flash-lite
 
-        # Intelligent scheduling and batching settings to respect API rate limits.
-        # All are optional and have sensible defaults.
+            # Intelligent scheduling and batching settings to respect API rate limits.
+            # All are optional and have sensible defaults.
         rpm: 60 # Requests Per Minute
         tpm: 1000000 # Tokens Per Minute
         rpd: 1000 # Requests Per Day
-        batch_size: 20 # Number of texts to group in one API call
+        batch_size:
+            20 # Number of texts to group in one API call
 
-        # Retry logic for handling transient network errors.
+
+            # Retry logic for handling transient network errors.
         retry_attempts: 3
         retry_delay: 1.0 # Initial delay in seconds
         retry_backoff_factor: 2.0 # Multiplier for subsequent retries (e.g., 1s, 2s, 4s)
 
-    # Example for Google Gemma, which also uses the official Google AI API.
+        # Example for Google Gemma, which also uses the official Google AI API.
     gemma:
         api_key: YOUR_GEMMA_API_KEY # Often the same as the Gemini key
         model: gemma-3-27b-it
 
-    # The 'google' provider uses the deep-translator library and does not require
-    # any configuration under the 'providers' section to work.
-    google: {}
+        # The 'google' provider uses the deep-translator library and does not require
+        # any configuration under the 'providers' section to work.
+    google:
+        {}
 
-    # The 'mock' provider is for testing and requires no configuration.
+        # The 'mock' provider is for testing and requires no configuration.
     mock: {}
 
 # ------------------------------------------------------------------------------
@@ -52,20 +56,21 @@ shortcuts:
     .defaults:
         translator: gemini
         source_lang: en
-        incremental: true # Enable caching to avoid re-translating unchanged text.
-        # task_id: my-custom-id # (Optional) Custom task identifier for cache file naming.
-        # If not specified, a stable UUID will be auto-generated based on task configuration.
-        # cache_path: custom_cache # (Optional) Custom cache directory relative to project root.
-        # Defaults to '.ogos/glocaltext/caches/' if not specified.
-        # This is a DIRECTORY path. Cache files are named <task_id>.json
+        incremental:
+            true # Enable caching to avoid re-translating unchanged text.
+            # task_id: my-custom-id # (Optional) Custom task identifier for cache file naming.
+            # If not specified, a stable UUID will be auto-generated based on task configuration.
+            # cache_path: custom_cache # (Optional) Custom cache directory relative to project root.
+            # Defaults to '.ogos/glocaltext/caches/' if not specified.
+            # This is a DIRECTORY path. Cache files are named <task_id>.json
 
-    # A reusable ruleset for protecting common variables in scripts.
+        # A reusable ruleset for protecting common variables in scripts.
     .script_rules:
         rules:
             protect:
                 - \$\w+|\$\{\w+\} # Protects $VAR and ${VAR}
 
-    # A custom shortcut for translating script files.
+        # A custom shortcut for translating script files.
     .scripts:
         extends: .defaults # Inherit from .defaults
         source:
@@ -80,10 +85,11 @@ tasks:
     - name: Translate Shell Scripts to Traditional Chinese
       enabled: true # You can temporarily disable a task by setting this to false.
       extends: .scripts # Inherit all settings from the '.scripts' shortcut
-      target_lang: zh-TW
-      # You can add or override settings from the shortcut.
-      # Rules are deep-merged. Here, we inherit the 'protect' rules from
-      # the '.script_rules' shortcut and add 'skip' and 'replace' rules.
+      target_lang:
+          zh-TW
+          # You can add or override settings from the shortcut.
+          # Rules are deep-merged. Here, we inherit the 'protect' rules from
+          # the '.script_rules' shortcut and add 'skip' and 'replace' rules.
       rules:
           extends: .script_rules
           skip:
@@ -91,6 +97,7 @@ tasks:
           replace:
               'User: (.*)': '使用者: \1'
 
+      task_id: 2cd1915d-b7a4-5e8e-9a01-3b177d5c5c8a
     - name: Translate Markdown Docs to Japanese
       extends: .defaults # Inherit only the base settings
       target_lang: ja
@@ -105,9 +112,11 @@ tasks:
               output/ja # DIRECTORY path relative to project root where files will be saved.
               # This creates: <project_root>/output/ja/<filename>
               # Note: Even names like '.cache.json' will be treated as a directory.
-          # Optional: Define a custom filename structure.
-          # Placeholders: {stem}, {source_lang}, {target_lang}, {extension}
-          filename: '{stem}.{target_lang}.md'
-      # Prompts can be used to add context for the AI translator.
+              # Optional: Define a custom filename structure.
+              # Placeholders: {stem}, {source_lang}, {target_lang}, {extension}
+          filename:
+              '{stem}.{target_lang}.md'
+              # Prompts can be used to add context for the AI translator.
       prompts:
           system: You are a professional translator specializing in technical documentation.
+      task_id: d50bfc24-582b-5292-bb27-6b57e5cfbaf0

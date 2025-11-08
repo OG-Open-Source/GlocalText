@@ -132,8 +132,9 @@ class TestTerminatingRuleProcessor(unittest.TestCase):
         )
 
     def test_skip_rule_terminates_match(self) -> None:
-        """1. Skip Rule: A match is correctly terminated if a 'skip' rule applies."""
-        self.mock_task.rules = [Rule(match=MatchRule(regex=r"^Skip"), action=ActionRule(action="skip"))]
+        """1. Skip Rule: A match is terminated if a 'skip' rule fully covers the text (Phase 2.3 behavior)."""
+        # Pattern that fully matches the text - will be detected by full coverage detection
+        self.mock_task.rules = [Rule(match=MatchRule(regex=r"^Skip this$"), action=ActionRule(action="skip"))]
         self.base_context.matches_to_translate = [
             TextMatch(original_text="Skip this", source_file=Path("f.txt"), span=(0, 9), task_name="test", extraction_rule="r"),
             TextMatch(original_text="Translate this", source_file=Path("f.txt"), span=(10, 24), task_name="test", extraction_rule="r"),
@@ -142,12 +143,14 @@ class TestTerminatingRuleProcessor(unittest.TestCase):
         processor.process(self.base_context)
         assert len(self.base_context.terminated_matches) == 1
         assert self.base_context.terminated_matches[0].original_text == "Skip this"
-        assert self.base_context.terminated_matches[0].provider == "skipped"
+        # Phase 2.3: Full coverage detection takes priority and marks this as "fully_covered"
+        assert self.base_context.terminated_matches[0].provider == "fully_covered"
         assert len(self.base_context.matches_to_translate) == 1
         assert self.base_context.matches_to_translate[0].original_text == "Translate this"
 
     def test_replace_to_empty_terminates_match(self) -> None:
-        """2. Replace-to-Empty Rule: A match is correctly terminated if a 'replace' rule results in an empty string."""
+        """2. Replace-to-Empty Rule: A match is terminated if a 'replace' rule fully covers the text (Phase 2.3 behavior)."""
+        # Pattern that fully matches the text - will be detected by full coverage detection
         self.mock_task.rules = [Rule(match=MatchRule(regex=r"^Replace.*"), action=ActionRule(action="replace", value=""))]
         self.base_context.matches_to_translate = [
             TextMatch(original_text="Replace this to empty", source_file=Path("f.txt"), span=(0, 21), task_name="test", extraction_rule="r"),
@@ -157,7 +160,8 @@ class TestTerminatingRuleProcessor(unittest.TestCase):
         processor.process(self.base_context)
         assert len(self.base_context.terminated_matches) == 1
         assert self.base_context.terminated_matches[0].original_text == "Replace this to empty"
-        assert self.base_context.terminated_matches[0].provider == "rule:replace"
+        # Phase 2.3: Full coverage detection marks this as "fully_covered" instead of "rule:replace"
+        assert self.base_context.terminated_matches[0].provider == "fully_covered"
         assert len(self.base_context.matches_to_translate) == 1
         assert self.base_context.matches_to_translate[0].original_text == "Keep this"
 

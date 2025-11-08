@@ -1,2 +1,0 @@
-[console_scripts]
-glocaltext = glocaltext.__main__:main

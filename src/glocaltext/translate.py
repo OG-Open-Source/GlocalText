@@ -9,6 +9,7 @@ from typing import Any
 import regex
 
 from .config import GlocalConfig, ProviderSettings
+from .coverage import TextCoverage
 from .models import TextMatch
 from .translators import TRANSLATOR_MAPPING
 from .translators.base import BaseTranslator, TranslationResult
@@ -263,12 +264,80 @@ def _try_terminate_with_replace(match: TextMatch, text: str, rule: Rule, matched
     return False
 
 
+def _check_full_coverage(match: TextMatch, rules: list[Rule]) -> bool:
+    """
+    Check if terminating rules (skip/replace/protect) fully cover the text.
+
+    This function creates a TextCoverage tracker for the match and applies all
+    terminating rules to determine if they collectively cover 100% of the text.
+    When fully covered, the match can skip translation entirely.
+
+    Args:
+        match: The TextMatch instance to check
+        rules: List of terminating rules to apply
+
+    Returns:
+        True if rules fully cover the text, False otherwise
+
+    """
+    text = match.original_text
+
+    # Empty text is considered fully covered
+    if not text:
+        return True
+
+    # Create coverage tracker for this match
+    coverage = TextCoverage(text)
+
+    # Track coverage from all terminating rules
+    for rule in rules:
+        # Only process skip, replace, and protect rules for coverage
+        if rule.action.action not in ("skip", "replace", "protect"):
+            continue
+
+        patterns = [rule.match.regex] if isinstance(rule.match.regex, str) else rule.match.regex
+
+        for pattern in patterns:
+            try:
+                # Find all matches of this pattern in the text
+                for regex_match in regex.finditer(pattern, text, regex.DOTALL):
+                    start = regex_match.start()
+                    end = regex_match.end()
+                    coverage.add_range(start, end)
+                    logger.debug("[Coverage Detection] Rule '%s' matched range [%d, %d) in text: '%s...'", pattern[:50], start, end, text[:50])
+            except regex.error as e:  # noqa: PERF203
+                logger.warning("Invalid regex '%s' in rule during coverage detection: %s", pattern, e)
+                continue
+
+    # Check if text is fully covered
+    is_fully_covered = coverage.is_fully_covered()
+
+    if is_fully_covered:
+        coverage_pct = coverage.get_coverage_percentage()
+        logger.info("[Full Coverage Detected] Text is 100%% covered by terminating rules: '%s...'", text[:50])
+    else:
+        coverage_pct = coverage.get_coverage_percentage()
+        uncovered_ranges = coverage.get_uncovered_ranges()
+        logger.debug("[Partial Coverage] Text is %.1f%% covered, uncovered ranges: %s", coverage_pct * 100, uncovered_ranges)
+
+    return is_fully_covered
+
+
 def _is_match_terminated(match: TextMatch, rules: list[Rule]) -> bool:
-    """Check if a match should be terminated by a 'skip' or a 'full-match replace' rule."""
+    """
+    Check if a match should be terminated by a 'skip' or a 'full-match replace' rule.
+
+    This function handles traditional termination (single rule that fully matches the entire text).
+    It does NOT handle full coverage detection - that's done by _check_full_coverage().
+
+    Note: Skip rules now require full match to terminate. Partial skip matches are handled
+    by the full coverage detection in _check_full_coverage().
+    """
     logger.debug("[Terminating Check] Checking if match should be terminated: '%s...'", match.original_text[:50])
     text_to_process = match.original_text
     for rule in rules:
         logger.debug("[Terminating Check] Testing rule: action=%s, regex=%s", rule.action.action, rule.match.regex)
+        # Only skip and replace rules can traditionally terminate
         if rule.action.action not in ("skip", "replace"):
             continue
 
@@ -276,9 +345,16 @@ def _is_match_terminated(match: TextMatch, rules: list[Rule]) -> bool:
         if not match_found or not matched_pattern:
             continue
 
+        # For skip rules, only terminate if the pattern fully matches the entire text
         if rule.action.action == "skip":
-            _handle_skip_action([match])
-            return True
+            # Check if this is a full match (covers entire text)
+            if regex.fullmatch(matched_pattern, text_to_process, regex.DOTALL):
+                _handle_skip_action([match])
+                logger.debug("[Terminating Check] Skip rule fully matched entire text, terminating")
+                return True
+            # Partial match - let full coverage detection handle it
+            logger.debug("[Terminating Check] Skip rule only partially matched, continuing")
+            continue
 
         if rule.action.action == "replace" and _try_terminate_with_replace(match, text_to_process, rule, matched_pattern):
             return True
@@ -290,12 +366,29 @@ def apply_terminating_rules(
     matches: list[TextMatch],
     task: TranslationTask,
 ) -> tuple[list[TextMatch], list[TextMatch]]:
-    """Apply terminating rules (skip, or replace resulting in empty) and partition matches."""
+    """
+    Apply terminating rules (skip, replace, protect) and partition matches.
+
+    This function now includes full coverage detection. When terminating rules
+    (skip/replace/protect) fully cover the entire text, translation is skipped
+    to save API costs and improve performance.
+
+    Args:
+        matches: List of TextMatch instances to process
+        task: TranslationTask containing the rules to apply
+
+    Returns:
+        tuple: (unhandled_matches, terminated_matches) where terminated_matches
+               includes both traditionally terminated and fully covered matches
+
+    """
     logger.debug("[Terminating Rules] Function called with %d matches and %d rules", len(matches), len(task.rules))
     unhandled_matches: list[TextMatch] = []
     terminated_matches: list[TextMatch] = []
-    terminating_rules = [r for r in task.rules if r.action.action in ("skip", "replace")]
-    logger.debug("[Terminating Rules] Found %d terminating rules (skip/replace)", len(terminating_rules))
+
+    # Include protect rules in coverage detection (they're also terminating for coverage purposes)
+    terminating_rules = [r for r in task.rules if r.action.action in ("skip", "replace", "protect")]
+    logger.debug("[Terminating Rules] Found %d terminating rules (skip/replace/protect)", len(terminating_rules))
 
     if not terminating_rules:
         logger.debug("[Terminating Rules] No terminating rules found, returning all matches as unhandled")
@@ -304,9 +397,19 @@ def apply_terminating_rules(
     logger.debug("[Terminating Rules] Starting to check %d matches against terminating rules", len(matches))
     for match in matches:
         logger.debug("[Terminating Rules] Checking match: '%s...'", match.original_text[:50])
-        if _is_match_terminated(match, terminating_rules):
+
+        # First check if rules fully cover the text
+        if _check_full_coverage(match, terminating_rules):
+            # Text is fully covered by terminating rules - skip translation
+            match.provider = "fully_covered"
+            match.translated_text = match.original_text
+            terminated_matches.append(match)
+            logger.info("[Full Coverage] Match fully covered by rules, skipping translation: '%s...'", match.original_text[:50])
+        elif _is_match_terminated(match, terminating_rules):
+            # Traditional termination (single rule match)
             terminated_matches.append(match)
         else:
+            # Not terminated, proceed with translation
             unhandled_matches.append(match)
 
     return unhandled_matches, terminated_matches

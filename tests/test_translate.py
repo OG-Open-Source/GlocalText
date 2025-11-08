@@ -10,6 +10,7 @@ from glocaltext.config import GlocalConfig, ProviderSettings
 from glocaltext.models import TextMatch
 from glocaltext.translate import (
     _apply_protection,
+    _check_full_coverage,
     _check_rule_match,
     _create_batches,
     _create_simple_batches,
@@ -350,6 +351,153 @@ class TestBatchCreation(unittest.TestCase):
         with patch("glocaltext.translate._create_simple_batches") as mock_simple:
             _create_batches(self.mock_translator, texts, batch_size=EQUAL_BATCH_SIZE, tpm=None, prompts=None)
             mock_simple.assert_called_once()
+
+
+class TestFullCoverageDetection(unittest.TestCase):
+    """Test suite for Phase 2.3: Full Coverage Detection in Terminating Rules."""
+
+    def setUp(self) -> None:
+        """Set up common test data."""
+        self.source_file = Path("test.txt")
+
+    def test_full_coverage_skip_rules(self) -> None:
+        """1. Full Coverage: Multiple skip rules that fully cover the text."""
+        # To achieve full coverage, rules must cover ALL characters including spaces
+        match = TextMatch(original_text="who are you", source_file=self.source_file, span=(0, 11), task_name="test", extraction_rule="test_rule")
+        rules = [
+            Rule(match=MatchRule(regex="who"), action=ActionRule(action="skip")),
+            Rule(match=MatchRule(regex=" "), action=ActionRule(action="skip")),  # Cover spaces
+            Rule(match=MatchRule(regex="are"), action=ActionRule(action="skip")),
+            Rule(match=MatchRule(regex="you"), action=ActionRule(action="skip")),
+        ]
+
+        # Check full coverage detection
+        is_covered = _check_full_coverage(match, rules)
+        assert is_covered is True, "Text should be fully covered by skip rules"
+
+    def test_partial_coverage_skip_rules(self) -> None:
+        """2. Partial Coverage: Skip rules that don't fully cover the text."""
+        # Example: "who are you and me" with only "who" and "are" skipped
+        match = TextMatch(original_text="who are you and me", source_file=self.source_file, span=(0, 18), task_name="test", extraction_rule="test_rule")
+        rules = [
+            Rule(match=MatchRule(regex="who"), action=ActionRule(action="skip")),
+            Rule(match=MatchRule(regex="are"), action=ActionRule(action="skip")),
+        ]
+
+        is_covered = _check_full_coverage(match, rules)
+        assert is_covered is False, "Text should NOT be fully covered (missing 'you and me')"
+
+    def test_full_coverage_overlapping_rules(self) -> None:
+        """3. Overlapping Rules: Rules that overlap should merge coverage correctly."""
+        # Example: "Hello World" with overlapping skip and protect
+        match = TextMatch(original_text="Hello World", source_file=self.source_file, span=(0, 11), task_name="test", extraction_rule="test_rule")
+        rules = [
+            Rule(match=MatchRule(regex="Hello W"), action=ActionRule(action="skip")),
+            Rule(match=MatchRule(regex="World"), action=ActionRule(action="protect")),
+        ]
+
+        is_covered = _check_full_coverage(match, rules)
+        assert is_covered is True, "Overlapping rules should merge to full coverage"
+
+    def test_full_coverage_mixed_rule_types(self) -> None:
+        """4. Mixed Rules: Skip, replace, and protect rules combined."""
+        match = TextMatch(original_text="test content", source_file=self.source_file, span=(0, 12), task_name="test", extraction_rule="test_rule")
+        rules = [
+            Rule(match=MatchRule(regex="test"), action=ActionRule(action="skip")),
+            Rule(match=MatchRule(regex=" "), action=ActionRule(action="replace", value="")),
+            Rule(match=MatchRule(regex="content"), action=ActionRule(action="protect")),
+        ]
+
+        is_covered = _check_full_coverage(match, rules)
+        assert is_covered is True, "Mixed rule types should achieve full coverage"
+
+    def test_empty_text_is_fully_covered(self) -> None:
+        """5. Edge Case: Empty text should be considered fully covered."""
+        match = TextMatch(original_text="", source_file=self.source_file, span=(0, 0), task_name="test", extraction_rule="test_rule")
+        rules = [
+            Rule(match=MatchRule(regex="test"), action=ActionRule(action="skip")),
+        ]
+
+        is_covered = _check_full_coverage(match, rules)
+        assert is_covered is True, "Empty text should be fully covered"
+
+    def test_no_rules_not_covered(self) -> None:
+        """6. Edge Case: No rules means text is NOT covered."""
+        match = TextMatch(original_text="some text", source_file=self.source_file, span=(0, 9), task_name="test", extraction_rule="test_rule")
+        rules: list[Rule] = []
+
+        is_covered = _check_full_coverage(match, rules)
+        assert is_covered is False, "No rules means text is not covered"
+
+    def test_apply_terminating_rules_with_full_coverage(self) -> None:
+        """7. Integration: apply_terminating_rules() detects full coverage."""
+        match = TextMatch(original_text="who are you", source_file=self.source_file, span=(0, 11), task_name="test", extraction_rule="test_rule")
+        task = TranslationTask(
+            name="test_task",
+            source_lang="en",
+            target_lang="fr",
+            translator="mock",
+            source=Source(include=["*.txt"]),
+            rules=[
+                Rule(match=MatchRule(regex="who"), action=ActionRule(action="skip")),
+                Rule(match=MatchRule(regex=" "), action=ActionRule(action="skip")),  # Cover spaces
+                Rule(match=MatchRule(regex="are"), action=ActionRule(action="skip")),
+                Rule(match=MatchRule(regex="you"), action=ActionRule(action="skip")),
+            ],
+        )
+
+        unhandled, terminated = apply_terminating_rules([match], task)
+
+        # Match should be terminated due to full coverage
+        assert len(terminated) == 1, "One match should be terminated"
+        assert len(unhandled) == 0, "No unhandled matches"
+        assert terminated[0].provider == "fully_covered", "Provider should be 'fully_covered'"
+        assert terminated[0].translated_text == "who are you", "Translated text should be original"
+
+    def test_apply_terminating_rules_partial_coverage(self) -> None:
+        """8. Integration: Partial coverage should NOT terminate translation."""
+        match = TextMatch(original_text="Hello World", source_file=self.source_file, span=(0, 11), task_name="test", extraction_rule="test_rule")
+        task = TranslationTask(
+            name="test_task",
+            source_lang="en",
+            target_lang="fr",
+            translator="mock",
+            source=Source(include=["*.txt"]),
+            rules=[
+                Rule(match=MatchRule(regex="Hello"), action=ActionRule(action="skip")),
+                # "Hello" [0, 5) is covered, but " World" [5, 11) is NOT covered
+                # Partial coverage - translation should proceed
+            ],
+        )
+
+        unhandled, terminated = apply_terminating_rules([match], task)
+
+        # Match should remain unhandled (needs translation)
+        assert len(unhandled) == 1, "One match should be unhandled"
+        assert len(terminated) == 0, "No terminated matches"
+
+    def test_full_coverage_with_anchors(self) -> None:
+        """9. Anchors: Full match with anchors should be detected."""
+        match = TextMatch(original_text="who are", source_file=self.source_file, span=(0, 7), task_name="test", extraction_rule="test_rule")
+        rules = [
+            Rule(match=MatchRule(regex="^who are$"), action=ActionRule(action="skip")),
+        ]
+
+        is_covered = _check_full_coverage(match, rules)
+        assert is_covered is True, "Anchored full match should be detected as full coverage"
+
+    def test_full_coverage_with_spaces(self) -> None:
+        """10. Spaces: Coverage should include whitespace characters."""
+        match = TextMatch(original_text="a b c", source_file=self.source_file, span=(0, 5), task_name="test", extraction_rule="test_rule")
+        rules = [
+            Rule(match=MatchRule(regex="a"), action=ActionRule(action="skip")),
+            Rule(match=MatchRule(regex=" "), action=ActionRule(action="skip")),
+            Rule(match=MatchRule(regex="b"), action=ActionRule(action="skip")),
+            Rule(match=MatchRule(regex="c"), action=ActionRule(action="skip")),
+        ]
+
+        is_covered = _check_full_coverage(match, rules)
+        assert is_covered is True, "All characters including spaces should be covered"
 
 
 if __name__ == "__main__":
