@@ -255,6 +255,7 @@ def _partition_matches_by_cache(matches: list[TextMatch], cache: dict[str, str])
         if cached_translation:
             match.translated_text = cached_translation
             match.provider = "cached"
+            logger.debug("[CACHE HIT] Checksum=%s, Provider set to 'cached'", checksum[:16])
             cached_matches.append(match)
         else:
             uncached_matches_by_text.setdefault(match.original_text, []).append(match)
@@ -377,6 +378,11 @@ def _update_cache(cache_path: Path, task_id: str, matches_to_cache: list[TextMat
         task_cache = full_cache.get(task_id, {})
         new_entries = {calculate_checksum(match.original_text): match.translated_text for match in matches_to_cache if match.translated_text is not None}
 
+        # Log which entries will be overwritten (cache protection diagnostic)
+        for checksum in new_entries:
+            if checksum in task_cache:
+                logger.warning("[CACHE OVERWRITE] Checksum %s will be updated\n  Old: '%s...'\n  New: '%s...'", checksum[:16], str(task_cache[checksum])[:80], str(new_entries[checksum])[:80])
+
         if new_entries:
             task_cache.update(new_entries)
             full_cache[task_id] = task_cache
@@ -399,14 +405,37 @@ class CacheUpdateProcessor(Processor):
         if not context.task.incremental:
             return
 
-        matches_to_cache = [m for m in context.matches_to_translate if m.translated_text is not None and m.provider not in ("cached", "rule", "skipped")]
-        if matches_to_cache:
+        # Strengthen filtering: ensure cached matches are never written back
+        matches_to_cache = [m for m in context.matches_to_translate if m.translated_text is not None and m.provider not in ("cached", "rule", "skipped", "fully_covered")]
+
+        if not matches_to_cache:
+            return
+
+        try:
+            cache_path = _get_task_cache_path(context.task)
+
+            # Load existing cache to verify checksums
             try:
-                cache_path = _get_task_cache_path(context.task)
-                logger.debug("Updating cache with %d new, API-translated items.", len(matches_to_cache))
-                _update_cache(cache_path, context.task.task_id, matches_to_cache)
-            except FileNotFoundError:
-                logger.exception("Could not update cache because project root was not found.")
+                existing_cache = _load_cache(cache_path, context.task.task_id)
+            except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
+                logger.warning("Could not load existing cache for verification: %s. Proceeding with update.", e)
+                existing_cache = {}
+
+            # Extra verification: filter out matches whose checksum already exists in cache
+            verified_matches = []
+            for match in matches_to_cache:
+                checksum = calculate_checksum(match.original_text)
+                if checksum in existing_cache:
+                    # This checksum is already in cache - skip to protect manual edits
+                    logger.warning("[CACHE PROTECTION] Checksum %s already in cache. Skipping update to protect manual edits.", checksum[:16])
+                    continue
+                verified_matches.append(match)
+
+            if verified_matches:
+                logger.debug("Updating cache with %d new, API-translated items.", len(verified_matches))
+                _update_cache(cache_path, context.task.task_id, verified_matches)
+        except FileNotFoundError:
+            logger.exception("Could not update cache because project root was not found.")
 
 
 def _get_output_path(file_path: Path, task: TranslationTask) -> Path | None:

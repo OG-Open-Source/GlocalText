@@ -149,7 +149,15 @@ class TestTerminatingRuleProcessor(unittest.TestCase):
         assert self.base_context.matches_to_translate[0].original_text == "Translate this"
 
     def test_replace_to_empty_terminates_match(self) -> None:
-        """2. Replace-to-Empty Rule: A match is terminated if a 'replace' rule fully covers the text (Phase 2.3 behavior)."""
+        """
+        2. Replace-to-Empty Rule: A match is terminated if a 'replace' rule fully covers the text.
+
+        Phase 4.8 Architecture:
+        - Replace rules execute FIRST, storing result in match.processed_text
+        - match.original_text remains unchanged (for cache consistency)
+        - Full coverage detection marks match as fully covered
+        - match.translated_text is set to processed_text when fully covered
+        """
         # Pattern that fully matches the text - will be detected by full coverage detection
         self.mock_task.rules = [Rule(match=MatchRule(regex=r"^Replace.*"), action=ActionRule(action="replace", value=""))]
         self.base_context.matches_to_translate = [
@@ -159,9 +167,13 @@ class TestTerminatingRuleProcessor(unittest.TestCase):
         processor = TerminatingRuleProcessor()
         processor.process(self.base_context)
         assert len(self.base_context.terminated_matches) == 1
-        assert self.base_context.terminated_matches[0].original_text == "Replace this to empty"
-        # Phase 2.3: Full coverage detection marks this as "fully_covered" instead of "rule:replace"
-        assert self.base_context.terminated_matches[0].provider == "fully_covered"
+
+        # Phase 4.8: Verify the architecture behavior
+        terminated = self.base_context.terminated_matches[0]
+        assert terminated.original_text == "Replace this to empty"  # Unchanged for cache
+        assert terminated.processed_text == ""  # Replace rule result
+        assert terminated.provider == "fully_covered"  # Fully covered by terminating rules
+
         assert len(self.base_context.matches_to_translate) == 1
         assert self.base_context.matches_to_translate[0].original_text == "Keep this"
 

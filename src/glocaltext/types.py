@@ -96,6 +96,8 @@ class TextMatch:
     tokens_used: int | None = None
     match_id: str = field(default_factory=lambda: str(uuid.uuid4()), init=False, repr=False)
     coverage: Optional["TextCoverage"] = None
+    # Store the text after replace rules are applied, while keeping original_text unchanged for cache consistency
+    processed_text: str | None = None
 
     def __hash__(self) -> int:
         """Return the hash of the match instance."""

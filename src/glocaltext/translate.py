@@ -17,6 +17,9 @@ from .types import PreProcessedText, Rule, TranslationTask
 
 logger = logging.getLogger(__name__)
 
+# Pattern truncation length for debug logging
+_PATTERN_LOG_MAX_LENGTH = 50
+
 # A cache to store initialized translator instances to avoid re-creating them.
 _translator_cache: dict[str, BaseTranslator] = {}
 # A session-level counter for requests-per-day limits.
@@ -114,7 +117,9 @@ def _check_rule_match(text: str, rule: Rule) -> tuple[bool, str | None]:
             if regex.search(r, text, regex.DOTALL):
                 return True, r
         except regex.error as e:  # noqa: PERF203
-            logger.warning("Invalid regex '%s' in rule: %s", r, e)
+            # Backreferences in pattern (e.g., from sed-style replace rules)
+            # cannot be used directly in regex matching
+            logger.debug("[Rule Match] Skipping pattern with regex error: '%s...' - %s", r[:_PATTERN_LOG_MAX_LENGTH] if len(r) > _PATTERN_LOG_MAX_LENGTH else r, e)
     return False, None
 
 
@@ -208,36 +213,35 @@ def _handle_rule_action(
 
 
 def _apply_pre_processing_rules(original_text: str, matches: list[TextMatch], task: TranslationTask) -> tuple[str, dict[str, str]]:
+    """
+    Apply pre-processing rules (currently only 'protect' rules).
+
+    Note: Replace rules are now handled in apply_terminating_rules() BEFORE
+    coverage detection (Solution A implementation). This ensures replace rules
+    always execute regardless of coverage status.
+
+    Args:
+        original_text: The original text to process
+        matches: List of TextMatch instances
+        task: TranslationTask containing the rules
+
+    Returns:
+        tuple: (processed_text, protected_map) where protected_map contains
+               placeholder mappings for protected text segments
+
+    """
     logger.debug("[Pre-processing Rules] Function called with %d rules", len(task.rules))
     text_to_process = original_text
     protected_map: dict[str, str] = {}
 
-    # Pre-processing rules are 'protect' and 'replace' rules that do not act as terminating rules.
-    # A terminating 'replace' is one that fully matches the text or replaces with an empty string.
-    # We apply all other 'replace' rules here as pre-processors.
+    # Pre-processing rules are now ONLY 'protect' rules.
+    # Replace rules are handled earlier in apply_terminating_rules().
     for rule in task.rules:
         logger.debug("[Pre-processing Rules] Processing rule: action=%s", rule.action.action)
         if rule.action.action == "protect":
             # 'protect' rules are always pre-processing.
             text_to_process, _ = _handle_rule_action(text_to_process, list(matches), rule, protected_map)
-        elif rule.action.action == "replace":
-            # A 'replace' is pre-processing if it's NOT a full match.
-            patterns = [rule.match.regex] if isinstance(rule.match.regex, str) else rule.match.regex
-            logger.debug("[Pre-processing Replace] Rule pattern: %s -> action value: %s", patterns, rule.action.value)
-
-            is_full_match_rule = any(regex.fullmatch(p, original_text, regex.DOTALL) for p in patterns)
-            logger.debug("[Pre-processing Replace] is_full_match_rule: %s", is_full_match_rule)
-            logger.debug("[Pre-processing Replace] Text before: %s...", text_to_process[:100])
-
-            if not is_full_match_rule:
-                logger.debug("[Pre-processing Replace] Entering replace branch (not full match)")
-                logger.debug("[Pre-processing Replace] Calling _handle_rule_action with text: '%s...'", text_to_process[:100])
-                text_before = text_to_process
-                text_to_process, _ = _handle_rule_action(text_to_process, list(matches), rule, protected_map)
-                logger.debug("[Pre-processing Replace] Text after: %s...", text_to_process[:100])
-                logger.debug("[Pre-processing Replace] Text actually changed: %s", text_before != text_to_process)
-            else:
-                logger.debug("[Pre-processing Replace] Skipping replace (is full match rule)")
+            logger.debug("[Pre-processing Protect] Protected text segments: %d", len(protected_map))
 
     return text_to_process, protected_map
 
@@ -264,57 +268,160 @@ def _try_terminate_with_replace(match: TextMatch, text: str, rule: Rule, matched
     return False
 
 
-def _check_full_coverage(match: TextMatch, rules: list[Rule]) -> bool:
+def _get_terminating_rule_patterns(rules: list[Rule]) -> list[str]:
     """
-    Check if terminating rules (skip/replace/protect) fully cover the text.
-
-    This function creates a TextCoverage tracker for the match and applies all
-    terminating rules to determine if they collectively cover 100% of the text.
-    When fully covered, the match can skip translation entirely.
+    Extract regex patterns from terminating rules.
 
     Args:
-        match: The TextMatch instance to check
-        rules: List of terminating rules to apply
+        rules: List of rules to filter
 
     Returns:
-        True if rules fully cover the text, False otherwise
+        List of regex patterns from skip/replace/protect rules
 
     """
-    text = match.original_text
-
-    # Empty text is considered fully covered
-    if not text:
-        return True
-
-    # Create coverage tracker for this match
-    coverage = TextCoverage(text)
-
-    # Track coverage from all terminating rules
+    patterns = []
     for rule in rules:
         # Only process skip, replace, and protect rules for coverage
         if rule.action.action not in ("skip", "replace", "protect"):
             continue
 
-        patterns = [rule.match.regex] if isinstance(rule.match.regex, str) else rule.match.regex
+        rule_patterns = [rule.match.regex] if isinstance(rule.match.regex, str) else rule.match.regex
+        patterns.extend(rule_patterns)
 
-        for pattern in patterns:
-            try:
-                # Find all matches of this pattern in the text
-                for regex_match in regex.finditer(pattern, text, regex.DOTALL):
-                    start = regex_match.start()
-                    end = regex_match.end()
-                    coverage.add_range(start, end)
-                    logger.debug("[Coverage Detection] Rule '%s' matched range [%d, %d) in text: '%s...'", pattern[:50], start, end, text[:50])
-            except regex.error as e:  # noqa: PERF203
-                logger.warning("Invalid regex '%s' in rule during coverage detection: %s", pattern, e)
-                continue
+    return patterns
+
+
+def _track_pattern_coverage(pattern: str, text: str, coverage: TextCoverage, rule_action: str) -> None:
+    """
+    Track coverage of a single regex pattern in the text.
+
+    Args:
+        pattern: Regex pattern to search for
+        text: Text to search in
+        coverage: TextCoverage instance to update with matched ranges
+        rule_action: Action type of the rule (skip, replace, protect)
+
+    """
+    # Replace rules should not contribute to coverage detection
+    # because their purpose is to transform text, not to skip translation
+    if rule_action == "replace":
+        logger.debug("[Coverage Detection] Skipping replace rule - replace rules do not contribute to coverage")
+        return
+
+    try:
+        # Find all matches of this pattern in the text
+        for regex_match in regex.finditer(pattern, text, regex.DOTALL):
+            start = regex_match.start()
+            end = regex_match.end()
+            coverage.add_range(start, end)
+            logger.debug(
+                "[Coverage Detection] Rule '%s' matched range [%d, %d) in text: '%s...'",
+                pattern[:50],
+                start,
+                end,
+                text[:50],
+            )
+    except regex.error as e:
+        # Backreferences in pattern are invalid for coverage detection
+        # This is expected for replace rules with sed-style patterns
+        logger.debug("[Coverage Detection] Skipping pattern with regex error: '%s...' - %s", pattern[:_PATTERN_LOG_MAX_LENGTH] if len(pattern) > _PATTERN_LOG_MAX_LENGTH else pattern, e)
+        return
+
+
+def _select_text_for_coverage_check(match: TextMatch, original_text_for_coverage: str | None) -> str:
+    """
+    Select the appropriate text to use for coverage detection.
+
+    CRITICAL: Uses explicit None checks to handle empty string ("") correctly.
+    Empty strings from replace-to-empty rules should be treated as valid text.
+
+    Args:
+        match: The TextMatch instance
+        original_text_for_coverage: Optional original text override
+
+    Returns:
+        The text to use for coverage checking
+
+    """
+    if match.processed_text is not None:
+        return match.processed_text
+    if original_text_for_coverage is not None:
+        return original_text_for_coverage
+    return match.original_text
+
+
+def _get_non_replace_rules(rules: list[Rule]) -> list[Rule]:
+    """
+    Filter out replace rules from the rule list.
+
+    Replace rules don't contribute to coverage detection because their purpose
+    is to transform text, not to skip translation.
+
+    Args:
+        rules: List of all rules
+
+    Returns:
+        List of rules excluding replace rules (only skip/protect rules)
+
+    """
+    return [r for r in rules if r.action.action != "replace"]
+
+
+def _check_full_coverage(match: TextMatch, rules: list[Rule], original_text_for_coverage: str | None = None) -> bool:
+    """
+    Check if terminating rules (skip/protect) fully cover the text.
+
+    Replace rules are excluded from coverage detection because their purpose is
+    to transform text, not to skip translation.
+
+    This function creates a TextCoverage tracker for the match and applies only
+    skip/protect rules to determine if they collectively cover 100% of the text.
+    When fully covered, the match can skip translation entirely.
+
+    Args:
+        match: The TextMatch instance to check
+        rules: List of terminating rules to check (will be filtered internally)
+        original_text_for_coverage: Optional original text to use for coverage detection.
+                                   If provided, this will be used instead of match.original_text.
+                                   This is necessary when match.original_text has been modified
+                                   by replace rules but we need to check coverage against the
+                                   true original text.
+
+    Returns:
+        True if rules fully cover the text, False otherwise
+
+    """
+    # Select the appropriate text for coverage checking
+    text_to_check = _select_text_for_coverage_check(match, original_text_for_coverage)
+
+    # Empty text is considered fully covered
+    if not text_to_check:
+        return True
+
+    # Filter out replace rules - they don't contribute to coverage
+    non_replace_rules = _get_non_replace_rules(rules)
+
+    logger.debug(
+        "[Coverage Detection] Checking %d non-replace rules (filtered out %d replace rules)",
+        len(non_replace_rules),
+        len(rules) - len(non_replace_rules),
+    )
+
+    # Create coverage tracker for this match
+    coverage = TextCoverage(text_to_check)
+
+    # Track coverage for each non-replace rule
+    for rule in non_replace_rules:
+        if rule.match and rule.match.regex:
+            rule_patterns = [rule.match.regex] if isinstance(rule.match.regex, str) else rule.match.regex
+            for pattern in rule_patterns:
+                _track_pattern_coverage(pattern, text_to_check, coverage, rule.action.action)
 
     # Check if text is fully covered
     is_fully_covered = coverage.is_fully_covered()
 
     if is_fully_covered:
-        coverage_pct = coverage.get_coverage_percentage()
-        logger.info("[Full Coverage Detected] Text is 100%% covered by terminating rules: '%s...'", text[:50])
+        logger.info("[Full Coverage Detected] Text is 100%% covered by skip/protect rules: '%s...'", text_to_check[:50])
     else:
         coverage_pct = coverage.get_coverage_percentage()
         uncovered_ranges = coverage.get_uncovered_ranges()
@@ -325,20 +432,29 @@ def _check_full_coverage(match: TextMatch, rules: list[Rule]) -> bool:
 
 def _is_match_terminated(match: TextMatch, rules: list[Rule]) -> bool:
     """
-    Check if a match should be terminated by a 'skip' or a 'full-match replace' rule.
+    Check if a match should be terminated by a 'skip' rule.
 
-    This function handles traditional termination (single rule that fully matches the entire text).
-    It does NOT handle full coverage detection - that's done by _check_full_coverage().
+    Coverage-aware design: Replace rules NO LONGER terminate translation flow.
+    They only transform text. Termination is now solely determined by skip/protect
+    rules through full coverage detection.
+
+    This function handles traditional termination (single skip rule that fully matches
+    the entire text). It does NOT handle full coverage detection - that's done by
+    _check_full_coverage().
 
     Note: Skip rules now require full match to terminate. Partial skip matches are handled
     by the full coverage detection in _check_full_coverage().
+
+    IMPORTANT: Uses processed_text (if available) to check skip rules, ensuring that
+    skip rules are evaluated against text AFTER replace rules have executed.
     """
-    logger.debug("[Terminating Check] Checking if match should be terminated: '%s...'", match.original_text[:50])
-    text_to_process = match.original_text
+    # Use processed_text if available (after replace rules), otherwise use original_text
+    text_to_process = match.processed_text or match.original_text
+    logger.debug("[Terminating Check] Checking if match should be terminated: '%s...' (using %s)", text_to_process[:50], "processed_text" if match.processed_text else "original_text")
     for rule in rules:
         logger.debug("[Terminating Check] Testing rule: action=%s, regex=%s", rule.action.action, rule.match.regex)
-        # Only skip and replace rules can traditionally terminate
-        if rule.action.action not in ("skip", "replace"):
+        # Only skip rules can traditionally terminate (replace rules no longer terminate)
+        if rule.action.action != "skip":
             continue
 
         match_found, matched_pattern = _check_rule_match(text_to_process, rule)
@@ -346,20 +462,101 @@ def _is_match_terminated(match: TextMatch, rules: list[Rule]) -> bool:
             continue
 
         # For skip rules, only terminate if the pattern fully matches the entire text
-        if rule.action.action == "skip":
-            # Check if this is a full match (covers entire text)
-            if regex.fullmatch(matched_pattern, text_to_process, regex.DOTALL):
-                _handle_skip_action([match])
-                logger.debug("[Terminating Check] Skip rule fully matched entire text, terminating")
-                return True
-            # Partial match - let full coverage detection handle it
-            logger.debug("[Terminating Check] Skip rule only partially matched, continuing")
-            continue
-
-        if rule.action.action == "replace" and _try_terminate_with_replace(match, text_to_process, rule, matched_pattern):
+        # Check if this is a full match (covers entire text)
+        if regex.fullmatch(matched_pattern, text_to_process, regex.DOTALL):
+            _handle_skip_action([match])
+            logger.debug("[Terminating Check] Skip rule fully matched entire text, terminating")
             return True
+        # Partial match - let full coverage detection handle it
+        logger.debug("[Terminating Check] Skip rule only partially matched, continuing")
 
     return False
+
+
+def _classify_terminating_rules(rules: list[Rule]) -> tuple[list[Rule], list[Rule], list[Rule]]:
+    """
+    Classify rules into replace, other terminating, and all terminating rules.
+
+    Args:
+        rules: List of all rules
+
+    Returns:
+        tuple: (replace_rules, other_terminating_rules, terminating_rules)
+               - replace_rules: Rules with action "replace"
+               - other_terminating_rules: Rules with action "skip" or "protect"
+               - terminating_rules: All rules with terminating actions
+
+    """
+    replace_rules = [r for r in rules if r.action.action == "replace"]
+    other_terminating_rules = [r for r in rules if r.action.action in ("skip", "protect")]
+    terminating_rules = [r for r in rules if r.action.action in ("skip", "replace", "protect")]
+    return replace_rules, other_terminating_rules, terminating_rules
+
+
+def _apply_replace_rules_to_match(match: TextMatch, replace_rules: list[Rule]) -> None:
+    """
+    Apply all replace rules to a match, modifying its processed_text field.
+
+    CRITICAL: This function modifies match.processed_text (not match.original_text)
+    to preserve cache consistency.
+
+    Args:
+        match: The TextMatch to process (modified in-place)
+        replace_rules: List of replace rules to apply
+
+    """
+    text_before_any_replacement = match.original_text
+    modified_text = match.original_text
+
+    for rule in replace_rules:
+        match_found, matched_pattern = _check_rule_match(modified_text, rule)
+        if match_found and matched_pattern:
+            modified_text = _handle_replace_action(modified_text, matched_pattern, rule)
+            logger.debug(
+                "[Replace Rule Applied] Pattern '%s...' replaced in text. Changed: %s",
+                matched_pattern[:30],
+                text_before_any_replacement != modified_text,
+            )
+
+    # Store the processed text if it was modified
+    if modified_text != match.original_text:
+        logger.info(
+            "[Replace Rules] Text modified by replace rules: '%s...' -> '%s...'",
+            match.original_text[:50],
+            modified_text[:50],
+        )
+        match.processed_text = modified_text
+
+
+def _determine_match_termination(
+    match: TextMatch,
+    terminating_rules: list[Rule],
+    terminated_matches: list[TextMatch],
+    unhandled_matches: list[TextMatch],
+) -> None:
+    """
+    Determine if a match should be terminated and add it to the appropriate list.
+
+    Args:
+        match: The TextMatch to evaluate
+        terminating_rules: All terminating rules to check
+        terminated_matches: List to append terminated matches (modified in-place)
+        unhandled_matches: List to append unhandled matches (modified in-place)
+
+    """
+    if _check_full_coverage(match, terminating_rules):
+        # Text is fully covered by terminating rules - skip translation
+        match.provider = "fully_covered"
+        # Use processed_text if available (from replace rules), otherwise use original_text
+        match.translated_text = match.processed_text if match.processed_text else match.original_text
+        terminated_matches.append(match)
+        logger.info("[Full Coverage] Match fully covered by rules, skipping translation: '%s...'", match.original_text[:50])
+    elif _is_match_terminated(match, terminating_rules):
+        # Traditional termination (single rule match)
+        terminated_matches.append(match)
+    else:
+        # Not terminated, proceed with translation
+        unhandled_matches.append(match)
 
 
 def apply_terminating_rules(
@@ -369,9 +566,14 @@ def apply_terminating_rules(
     """
     Apply terminating rules (skip, replace, protect) and partition matches.
 
-    This function now includes full coverage detection. When terminating rules
+    This function now executes replace rules FIRST (before coverage detection),
+    then includes full coverage detection. When terminating rules
     (skip/replace/protect) fully cover the entire text, translation is skipped
     to save API costs and improve performance.
+
+    Solution A Implementation: Replace rules are applied to match.original_text
+    BEFORE coverage detection, ensuring they always execute regardless of
+    coverage status.
 
     Args:
         matches: List of TextMatch instances to process
@@ -386,9 +588,10 @@ def apply_terminating_rules(
     unhandled_matches: list[TextMatch] = []
     terminated_matches: list[TextMatch] = []
 
-    # Include protect rules in coverage detection (they're also terminating for coverage purposes)
-    terminating_rules = [r for r in task.rules if r.action.action in ("skip", "replace", "protect")]
-    logger.debug("[Terminating Rules] Found %d terminating rules (skip/replace/protect)", len(terminating_rules))
+    # Classify rules into different categories
+    replace_rules, other_terminating_rules, terminating_rules = _classify_terminating_rules(task.rules)
+
+    logger.debug("[Terminating Rules] Found %d replace rules, %d other terminating rules", len(replace_rules), len(other_terminating_rules))
 
     if not terminating_rules:
         logger.debug("[Terminating Rules] No terminating rules found, returning all matches as unhandled")
@@ -398,19 +601,11 @@ def apply_terminating_rules(
     for match in matches:
         logger.debug("[Terminating Rules] Checking match: '%s...'", match.original_text[:50])
 
-        # First check if rules fully cover the text
-        if _check_full_coverage(match, terminating_rules):
-            # Text is fully covered by terminating rules - skip translation
-            match.provider = "fully_covered"
-            match.translated_text = match.original_text
-            terminated_matches.append(match)
-            logger.info("[Full Coverage] Match fully covered by rules, skipping translation: '%s...'", match.original_text[:50])
-        elif _is_match_terminated(match, terminating_rules):
-            # Traditional termination (single rule match)
-            terminated_matches.append(match)
-        else:
-            # Not terminated, proceed with translation
-            unhandled_matches.append(match)
+        # PHASE 1: Apply all replace rules FIRST (before coverage detection)
+        _apply_replace_rules_to_match(match, replace_rules)
+
+        # PHASE 2: Check if rules fully cover the text and determine termination
+        _determine_match_termination(match, terminating_rules, terminated_matches, unhandled_matches)
 
     return unhandled_matches, terminated_matches
 
@@ -418,10 +613,15 @@ def apply_terminating_rules(
 def _apply_translation_rules(unique_texts: dict[str, list[TextMatch]], task: TranslationTask) -> list[PreProcessedText]:
     pre_processed_texts: list[PreProcessedText] = []
     for original_text, matches in unique_texts.items():
-        text_to_process, protected_map = _apply_pre_processing_rules(original_text, matches, task)
+        # Use processed_text if available (from replace rules), otherwise use original_text
+        # This ensures replace rules are applied before protect rules
+        first_match = matches[0] if matches else None
+        text_for_processing = first_match.processed_text if first_match and first_match.processed_text else original_text
+
+        text_to_process, protected_map = _apply_pre_processing_rules(text_for_processing, matches, task)
         pre_processed_texts.append(
             PreProcessedText(
-                original_text=original_text,
+                original_text=original_text,  # Keep original for cache consistency
                 text_to_process=text_to_process,
                 protected_map=protected_map,
                 matches=matches,
@@ -668,6 +868,74 @@ def _translate_and_update_matches(  # noqa: PLR0913
             time.sleep(delay)
 
 
+def _handle_dry_run_mode(
+    texts_to_translate_api: list[str],
+    pre_processed_items: list[PreProcessedText],
+) -> None:
+    """
+    Handle dry-run mode by marking matches without calling the API.
+
+    Args:
+        texts_to_translate_api: List of texts that would be translated
+        pre_processed_items: Pre-processed items containing matches to update
+
+    """
+    logger.info("[DRY RUN] Pre-processing rules applied. Skipping actual API translation for %d texts.", len(texts_to_translate_api))
+    item_map = {item.text_to_process: item for item in pre_processed_items}
+    for text_to_process in texts_to_translate_api:
+        processed_item = item_map.get(text_to_process)
+        if processed_item:
+            for match in processed_item.matches:
+                match.provider = "dry_run_skipped"
+                # In dry-run, show the pre-processed text (with rules applied) as the result
+                match.translated_text = processed_item.text_to_process
+
+
+def _determine_batching_strategy(
+    context: ProcessingContext,
+    texts_to_translate_api: list[str],
+    provider_settings: ProviderSettings,
+) -> list[list[str]]:
+    """
+    Determine the batching strategy based on provider configuration.
+
+    Args:
+        context: Processing context containing translator and task info
+        texts_to_translate_api: Texts to be translated
+        provider_settings: Provider-specific settings
+
+    Returns:
+        List of text batches ready for translation
+
+    """
+    rpm = provider_settings.rpm
+    tpm = provider_settings.tpm
+    rpd = provider_settings.rpd
+    batch_size = provider_settings.batch_size if provider_settings.batch_size is not None else 20
+
+    if rpm is None or tpm is None:
+        logger.info(
+            "Provider '%s' is not configured for intelligent scheduling (RPM/TPM). Sending as a single batch.",
+            context.provider_name,
+        )
+        return [texts_to_translate_api]
+
+    logger.debug(
+        "Provider '%s' configured for intelligent scheduling: RPM=%s, TPM=%s, RPD=%s.",
+        context.provider_name,
+        rpm,
+        tpm,
+        rpd or "N/A",
+    )
+    return _create_batches(
+        translator=context.translator,
+        texts_to_translate=texts_to_translate_api,
+        batch_size=batch_size,
+        tpm=tpm,
+        prompts=context.task.prompts if context.task.prompts else None,
+    )
+
+
 def _process_genai_matches(
     matches: list[TextMatch],
     context: ProcessingContext,
@@ -692,44 +960,11 @@ def _process_genai_matches(
 
     # In dry-run mode, skip actual API translation but mark matches appropriately
     if context.dry_run:
-        logger.info("[DRY RUN] Pre-processing rules applied. Skipping actual API translation for %d texts.", len(texts_to_translate_api))
-        item_map = {item.text_to_process: item for item in pre_processed_items}
-        for text_to_process in texts_to_translate_api:
-            processed_item = item_map.get(text_to_process)
-            if processed_item:
-                for match in processed_item.matches:
-                    match.provider = "dry_run_skipped"
-                    # In dry-run, show the pre-processed text (with rules applied) as the result
-                    match.translated_text = processed_item.text_to_process
+        _handle_dry_run_mode(texts_to_translate_api, pre_processed_items)
         return
 
     provider_settings = context.translator.settings or ProviderSettings()
-    rpm = provider_settings.rpm
-    tpm = provider_settings.tpm
-    rpd = provider_settings.rpd
-    batch_size = provider_settings.batch_size if provider_settings.batch_size is not None else 20
-
-    if rpm is None or tpm is None:
-        logger.info(
-            "Provider '%s' is not configured for intelligent scheduling (RPM/TPM). Sending as a single batch.",
-            context.provider_name,
-        )
-        batches = [texts_to_translate_api]
-    else:
-        logger.debug(
-            "Provider '%s' configured for intelligent scheduling: RPM=%s, TPM=%s, RPD=%s.",
-            context.provider_name,
-            rpm,
-            tpm,
-            rpd or "N/A",
-        )
-        batches = _create_batches(
-            translator=context.translator,
-            texts_to_translate=texts_to_translate_api,
-            batch_size=batch_size,
-            tpm=tpm,
-            prompts=context.task.prompts if context.task.prompts else None,
-        )
+    batches = _determine_batching_strategy(context, texts_to_translate_api, provider_settings)
 
     _translate_and_update_matches(
         context.translator,
@@ -737,8 +972,8 @@ def _process_genai_matches(
         pre_processed_items,
         context.task,
         context.provider_name,
-        rpm=rpm,
-        rpd=rpd,
+        rpm=provider_settings.rpm,
+        rpd=provider_settings.rpd,
         debug=context.debug,
     )
 
