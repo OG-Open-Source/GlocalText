@@ -6,13 +6,10 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from glocaltext.config import GlocalConfig
+from glocaltext.match_state import MatchLifecycle
 from glocaltext.models import ExecutionContext
-from glocaltext.processing.processors import (
-    CacheProcessor,
-    CacheUpdateProcessor,
-    _update_cache,
-    calculate_checksum,
-)
+from glocaltext.processing import CacheProcessor, CacheUpdateProcessor
+from glocaltext.processing.cache_utils import _update_cache, calculate_checksum
 from glocaltext.types import Source, TextMatch, TranslationTask
 
 
@@ -34,8 +31,8 @@ class TestCacheProtection(unittest.TestCase):
         self.context = ExecutionContext(task=self.mock_task, config=self.mock_config)
 
     @patch("glocaltext.paths.find_project_root")
-    @patch("glocaltext.processing.processors._load_cache")
-    @patch("glocaltext.processing.processors._update_cache")
+    @patch("glocaltext.processing.cache_processors._load_cache")
+    @patch("glocaltext.processing.cache_processors._update_cache")
     def test_cached_matches_not_overwritten_in_incremental_mode(
         self,
         mock_update_cache: MagicMock,
@@ -48,7 +45,7 @@ class TestCacheProtection(unittest.TestCase):
         Scenario:
         1. User manually edited a cache entry
         2. System runs in incremental mode
-        3. Match hits cache (provider="cached")
+        3. Match hits cache (lifecycle=MatchLifecycle.CACHED)
         4. CacheUpdateProcessor should NOT write this match back to cache
         """
         mock_find_root.return_value = Path("/fake_project")
@@ -70,14 +67,15 @@ class TestCacheProtection(unittest.TestCase):
             extraction_rule="r",
         )
         self.context.all_matches = [match]
+        self.context.is_incremental = True  # Enable incremental mode
 
-        # Run CacheProcessor - this should set provider="cached"
+        # Run CacheProcessor - this should set lifecycle=MatchLifecycle.CACHED
         cache_processor = CacheProcessor()
         cache_processor.process(self.context)
 
         # Verify match was cached
         assert len(self.context.cached_matches) == 1
-        assert self.context.cached_matches[0].provider == "cached"
+        assert self.context.cached_matches[0].lifecycle == MatchLifecycle.CACHED
         assert self.context.cached_matches[0].translated_text == manual_translation
 
         # Run CacheUpdateProcessor
@@ -89,8 +87,8 @@ class TestCacheProtection(unittest.TestCase):
         mock_update_cache.assert_not_called()
 
     @patch("glocaltext.paths.find_project_root")
-    @patch("glocaltext.processing.processors._load_cache")
-    @patch("glocaltext.processing.processors._update_cache")
+    @patch("glocaltext.processing.cache_processors._load_cache")
+    @patch("glocaltext.processing.cache_processors._update_cache")
     def test_cache_protection_filters_provider_cached(
         self,
         mock_update_cache: MagicMock,
@@ -98,15 +96,16 @@ class TestCacheProtection(unittest.TestCase):
         mock_find_root: MagicMock,
     ) -> None:
         """
-        Test that matches with provider='cached' are filtered out from cache updates.
+        Test that matches with lifecycle=MatchLifecycle.CACHED are filtered out from cache updates.
 
         Even if a cached match somehow ends up in matches_to_translate,
-        it should be filtered by the provider check.
+        it should be filtered by the lifecycle check.
         """
         mock_find_root.return_value = Path("/fake_project")
         mock_load_cache.return_value = {}
+        self.context.is_incremental = True  # Enable incremental mode
 
-        # Simulate a match that has provider="cached" but is in matches_to_translate
+        # Simulate a match that has lifecycle=MatchLifecycle.CACHED but is in matches_to_translate
         # (This shouldn't normally happen, but we test the safety net)
         cached_match = TextMatch(
             original_text="Cached text",
@@ -115,8 +114,8 @@ class TestCacheProtection(unittest.TestCase):
             task_name="test",
             extraction_rule="r",
             translated_text="Translated from cache",
-            provider="cached",
         )
+        cached_match.lifecycle = MatchLifecycle.CACHED
 
         # New API-translated match (should be cached)
         new_match = TextMatch(
@@ -126,8 +125,8 @@ class TestCacheProtection(unittest.TestCase):
             task_name="test",
             extraction_rule="r",
             translated_text="New translation",
-            provider="api",
         )
+        new_match.lifecycle = MatchLifecycle.TRANSLATED
 
         self.context.matches_to_translate = [cached_match, new_match]
 
@@ -140,11 +139,11 @@ class TestCacheProtection(unittest.TestCase):
         called_matches = mock_update_cache.call_args.args[2]
         assert len(called_matches) == 1
         assert called_matches[0].original_text == "New text"
-        assert called_matches[0].provider == "api"
+        assert called_matches[0].lifecycle == MatchLifecycle.TRANSLATED
 
     @patch("glocaltext.paths.find_project_root")
-    @patch("glocaltext.processing.processors._load_cache")
-    @patch("glocaltext.processing.processors._update_cache")
+    @patch("glocaltext.processing.cache_processors._load_cache")
+    @patch("glocaltext.processing.cache_processors._update_cache")
     def test_cache_protection_filters_existing_checksums(
         self,
         mock_update_cache: MagicMock,
@@ -154,10 +153,11 @@ class TestCacheProtection(unittest.TestCase):
         """
         Test that matches whose checksums already exist in cache are filtered out.
 
-        This is the extra protection layer: even if a match passes the provider filter,
+        This is the extra protection layer: even if a match passes the lifecycle filter,
         if its checksum is already in the cache, it should not overwrite the existing entry.
         """
         mock_find_root.return_value = Path("/fake_project")
+        self.context.is_incremental = True  # Enable incremental mode
 
         # Setup: Existing cache with a manual edit
         existing_text = "Existing text"
@@ -166,7 +166,7 @@ class TestCacheProtection(unittest.TestCase):
         mock_load_cache.return_value = {existing_checksum: manual_edit}
 
         # Simulate a scenario where a match with existing checksum is somehow
-        # marked with a non-cached provider (edge case / bug scenario)
+        # marked with a non-cached lifecycle (edge case / bug scenario)
         suspicious_match = TextMatch(
             original_text=existing_text,
             source_file=Path("f.txt"),
@@ -174,8 +174,8 @@ class TestCacheProtection(unittest.TestCase):
             task_name="test",
             extraction_rule="r",
             translated_text="Different translation",
-            provider="api",  # Provider is not "cached"
         )
+        suspicious_match.lifecycle = MatchLifecycle.TRANSLATED  # Lifecycle is not CACHED
 
         # A genuinely new match
         new_match = TextMatch(
@@ -185,8 +185,8 @@ class TestCacheProtection(unittest.TestCase):
             task_name="test",
             extraction_rule="r",
             translated_text="Brand new translation",
-            provider="api",
         )
+        new_match.lifecycle = MatchLifecycle.TRANSLATED
 
         self.context.matches_to_translate = [suspicious_match, new_match]
 
@@ -201,8 +201,8 @@ class TestCacheProtection(unittest.TestCase):
         assert called_matches[0].original_text == "Brand new text"
 
     @patch("glocaltext.paths.find_project_root")
-    @patch("glocaltext.processing.processors._load_cache")
-    @patch("glocaltext.processing.processors._update_cache")
+    @patch("glocaltext.processing.cache_processors._load_cache")
+    @patch("glocaltext.processing.cache_processors._update_cache")
     def test_cache_protection_filters_fully_covered_provider(
         self,
         mock_update_cache: MagicMock,
@@ -210,15 +210,16 @@ class TestCacheProtection(unittest.TestCase):
         mock_find_root: MagicMock,
     ) -> None:
         """
-        Test that matches with provider='fully_covered' are filtered out.
+        Test that matches with lifecycle=MatchLifecycle.SKIPPED are filtered out.
 
-        The fully_covered provider is used for matches that are completely
+        The SKIPPED lifecycle is used for matches that are completely
         covered by terminating rules and should not be written to cache.
         """
         mock_find_root.return_value = Path("/fake_project")
         mock_load_cache.return_value = {}
+        self.context.is_incremental = True  # Enable incremental mode
 
-        # Match marked as fully_covered
+        # Match marked as SKIPPED
         covered_match = TextMatch(
             original_text="Fully covered text",
             source_file=Path("f.txt"),
@@ -226,8 +227,8 @@ class TestCacheProtection(unittest.TestCase):
             task_name="test",
             extraction_rule="r",
             translated_text="Covered translation",
-            provider="fully_covered",
         )
+        covered_match.lifecycle = MatchLifecycle.SKIPPED
 
         # Normal API-translated match
         api_match = TextMatch(
@@ -237,8 +238,8 @@ class TestCacheProtection(unittest.TestCase):
             task_name="test",
             extraction_rule="r",
             translated_text="API translation",
-            provider="api",
         )
+        api_match.lifecycle = MatchLifecycle.TRANSLATED
 
         self.context.matches_to_translate = [covered_match, api_match]
 
@@ -289,12 +290,12 @@ class TestCacheProtection(unittest.TestCase):
             task_name="test",
             extraction_rule="r",
             translated_text="New translation",
-            provider="api",
         )
+        match.lifecycle = MatchLifecycle.TRANSLATED
 
         # Import to capture logs
 
-        with self.assertLogs("glocaltext.processing.processors", level="WARNING") as log_capture:
+        with self.assertLogs("glocaltext.processing.cache_utils", level="WARNING") as log_capture:
             cache_path = Path("/fake/cache.json")
             _update_cache(cache_path, "test-task-id-12345", [match])
 

@@ -5,18 +5,21 @@ from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
 from glocaltext.config import GlocalConfig, ProviderSettings
+from glocaltext.match_state import MatchLifecycle
 from glocaltext.models import ExecutionContext, TextMatch
-from glocaltext.processing.processors import (
+from glocaltext.processing import (
     CacheProcessor,
     CacheUpdateProcessor,
     CaptureProcessor,
     TerminatingRuleProcessor,
     TranslationProcessor,
     WriteBackProcessor,
+)
+from glocaltext.processing.cache_utils import _get_task_cache_path
+from glocaltext.processing.capture_processor import _exclude_files
+from glocaltext.processing.writeback_processor import (
     _apply_translations_by_strategy,
-    _exclude_files,
     _get_output_path,
-    _get_task_cache_path,
     _orchestrate_file_write,
     _write_modified_content,
 )
@@ -143,8 +146,8 @@ class TestTerminatingRuleProcessor(unittest.TestCase):
         processor.process(self.base_context)
         assert len(self.base_context.terminated_matches) == 1
         assert self.base_context.terminated_matches[0].original_text == "Skip this"
-        # Phase 2.3: Full coverage detection takes priority and marks this as "fully_covered"
-        assert self.base_context.terminated_matches[0].provider == "fully_covered"
+        # Phase 2.3: Full coverage detection takes priority and marks this as SKIPPED
+        assert self.base_context.terminated_matches[0].lifecycle == MatchLifecycle.SKIPPED
         assert len(self.base_context.matches_to_translate) == 1
         assert self.base_context.matches_to_translate[0].original_text == "Translate this"
 
@@ -172,7 +175,7 @@ class TestTerminatingRuleProcessor(unittest.TestCase):
         terminated = self.base_context.terminated_matches[0]
         assert terminated.original_text == "Replace this to empty"  # Unchanged for cache
         assert terminated.processed_text == ""  # Replace rule result
-        assert terminated.provider == "fully_covered"  # Fully covered by terminating rules
+        assert terminated.lifecycle == MatchLifecycle.SKIPPED  # Fully covered by terminating rules
 
         assert len(self.base_context.matches_to_translate) == 1
         assert self.base_context.matches_to_translate[0].original_text == "Keep this"
@@ -203,11 +206,12 @@ class TestCacheProcessor(unittest.TestCase):
         assert self.context.matches_to_translate == self.context.all_matches
         assert len(self.context.cached_matches) == 0
 
-    @patch("glocaltext.paths.find_project_root")
-    @patch("glocaltext.processing.processors._load_cache")
-    def test_partitioning_with_cache_hits_and_misses(self, mock_load_cache: MagicMock, mock_find_root: MagicMock) -> None:
+    @patch("glocaltext.processing.cache_processors._get_task_cache_path")
+    @patch("glocaltext.processing.cache_processors._load_cache")
+    def test_partitioning_with_cache_hits_and_misses(self, mock_load_cache: MagicMock, mock_get_path: MagicMock) -> None:
         """2. Partitioning: Correctly separates matches based on cache hits."""
-        mock_find_root.return_value = Path("/fake_project")
+        self.context.is_incremental = True  # Enable incremental mode
+        mock_get_path.return_value = Path("/fake_project/.ogos/glocaltext/caches/test_task.json")
         # sha256 hash of "" is e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
         mock_load_cache.return_value = {"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": "Bonjour"}
         match_in_cache = TextMatch("", Path("f1.txt"), (0, 0), "t", "r")
@@ -250,7 +254,7 @@ class TestTranslationProcessor(unittest.TestCase):
         self.processor.process(self.context)
         assert len(self.context.matches_to_translate) == 1
         assert self.context.matches_to_translate[0].translated_text == "Hello"
-        assert self.context.matches_to_translate[0].provider == "skipped_same_lang"
+        assert self.context.matches_to_translate[0].lifecycle == MatchLifecycle.SKIPPED
 
     def test_skips_in_dry_run_mode(self) -> None:
         """2. Skip: Skips API call in dry-run mode but applies pre-processing rules."""
@@ -260,7 +264,7 @@ class TestTranslationProcessor(unittest.TestCase):
         assert len(self.context.matches_to_translate) == 1
         # In dry-run mode, pre-processing rules are applied, so translated_text contains the processed text
         assert self.context.matches_to_translate[0].translated_text is not None
-        assert self.context.matches_to_translate[0].provider == "dry_run_skipped"
+        assert self.context.matches_to_translate[0].lifecycle == MatchLifecycle.DRY_RUN_SIMULATED
 
     def test_discards_empty_matches(self) -> None:
         """3. Filtering: Discards empty or whitespace-only matches before translation."""
@@ -272,7 +276,7 @@ class TestTranslationProcessor(unittest.TestCase):
         assert len(self.context.matches_to_translate) == 1
         assert self.context.matches_to_translate[0].original_text == "Valid"
         assert len(self.context.terminated_matches) == 1
-        assert self.context.terminated_matches[0].provider == "skipped:empty"
+        assert self.context.terminated_matches[0].lifecycle == MatchLifecycle.SKIPPED
 
 
 class TestCacheUpdateProcessor(unittest.TestCase):
@@ -297,20 +301,24 @@ class TestCacheUpdateProcessor(unittest.TestCase):
         """1. Skip: Skips cache update in dry-run mode."""
         mock_find_root.return_value = Path("/fake_project")
         self.context.is_dry_run = True
-        self.context.matches_to_translate = [TextMatch("Hello", Path("f.txt"), (0, 5), "t", "r", translated_text="Bonjour", provider="api")]
-        with patch("glocaltext.processing.processors._update_cache") as mock_update_cache:
+        match = TextMatch("Hello", Path("f.txt"), (0, 5), "t", "r", translated_text="Bonjour")
+        match.lifecycle = MatchLifecycle.TRANSLATED
+        self.context.matches_to_translate = [match]
+        with patch("glocaltext.processing.cache_utils._update_cache") as mock_update_cache:
             self.processor.process(self.context)
             mock_update_cache.assert_not_called()
 
-    @patch("glocaltext.paths.find_project_root")
-    @patch("glocaltext.processing.processors._update_cache")
-    def test_updates_cache_with_new_translations(self, mock_update_cache: MagicMock, mock_find_root: MagicMock) -> None:
+    @patch("glocaltext.processing.cache_processors._get_task_cache_path")
+    @patch("glocaltext.processing.cache_processors._update_cache")
+    def test_updates_cache_with_new_translations(self, mock_update_cache: MagicMock, mock_get_path: MagicMock) -> None:
         """2. Update: Updates the cache with new, API-translated items."""
-        mock_find_root.return_value = Path("/fake_project")
-        self.context.matches_to_translate = [
-            TextMatch("Hello", Path("f.txt"), (0, 5), "t", "r", translated_text="Bonjour", provider="api"),
-            TextMatch("World", Path("f.txt"), (6, 11), "t", "r", translated_text="Monde", provider="cached"),  # This one should be filtered out
-        ]
+        self.context.is_incremental = True  # Enable incremental mode
+        mock_get_path.return_value = Path("/fake_project/.ogos/glocaltext/caches/test_task.json")
+        match1 = TextMatch("Hello", Path("f.txt"), (0, 5), "t", "r", translated_text="Bonjour")
+        match1.lifecycle = MatchLifecycle.TRANSLATED
+        match2 = TextMatch("World", Path("f.txt"), (6, 11), "t", "r", translated_text="Monde")
+        match2.lifecycle = MatchLifecycle.CACHED  # This one should be filtered out
+        self.context.matches_to_translate = [match1, match2]
         self.processor.process(self.context)
         mock_update_cache.assert_called_once()
 
@@ -341,22 +349,30 @@ class TestWriteBackProcessor(unittest.TestCase):
         self.context = ExecutionContext(task=self.mock_task, config=self.mock_config)
         self.processor = WriteBackProcessor()
 
-    @patch("glocaltext.processing.processors._orchestrate_file_write")
+    @patch("glocaltext.processing.writeback_processor._orchestrate_file_write")
     def test_skips_in_dry_run_mode(self, mock_orchestrate: MagicMock) -> None:
         """1. Skip: Skips file writing in dry-run mode."""
         self.context.is_dry_run = True
-        self.context.matches_to_translate = [TextMatch("H", Path("f.txt"), (0, 1), "t", "r", provider="api")]
+        match = TextMatch("H", Path("f.txt"), (0, 1), "t", "r")
+        match.lifecycle = MatchLifecycle.TRANSLATED
+        self.context.matches_to_translate = [match]
         self.processor.process(self.context)
         mock_orchestrate.assert_not_called()
 
-    @patch("glocaltext.processing.processors._orchestrate_file_write")
+    @patch("glocaltext.processing.writeback_processor._orchestrate_file_write")
     def test_groups_matches_and_writes_files(self, mock_orchestrate: MagicMock) -> None:
         """2. Write-back: Correctly groups matches by file and calls the writer."""
         file1 = Path("file1.txt")
         file2 = Path("file2.txt")
-        self.context.terminated_matches = [TextMatch("A", file1, (0, 1), "t", "r", provider="skipped")]
-        self.context.cached_matches = [TextMatch("B", file2, (0, 1), "t", "r", provider="cached")]
-        self.context.matches_to_translate = [TextMatch("C", file1, (2, 3), "t", "r", provider="api")]
+        match1 = TextMatch("A", file1, (0, 1), "t", "r")
+        match1.lifecycle = MatchLifecycle.SKIPPED
+        match2 = TextMatch("B", file2, (0, 1), "t", "r")
+        match2.lifecycle = MatchLifecycle.CACHED
+        match3 = TextMatch("C", file1, (2, 3), "t", "r")
+        match3.lifecycle = MatchLifecycle.TRANSLATED
+        self.context.terminated_matches = [match1]
+        self.context.cached_matches = [match2]
+        self.context.matches_to_translate = [match3]
         self.processor.process(self.context)
 
         expected_call_count = 2
@@ -390,8 +406,8 @@ class TestProcessorHelpers(unittest.TestCase):
             source=Source(include=["*.txt"]),
         )
 
-    @patch("glocaltext.processing.processors.paths.get_cache_dir")
-    @patch("glocaltext.processing.processors.paths.find_project_root")
+    @patch("glocaltext.processing.cache_utils.paths.get_cache_dir")
+    @patch("glocaltext.processing.cache_utils.paths.find_project_root")
     def test_get_task_cache_path(self, mock_find_root: MagicMock, mock_get_cache_dir: MagicMock) -> None:
         """Helper: _get_task_cache_path correctly builds a cache path from a task's UUID."""
         mock_cache_dir = Path("/fake/cache/dir")
@@ -475,7 +491,7 @@ class TestWriteBackStrategies(unittest.TestCase):
         mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
         mock_write.assert_called_once_with("content", "utf-8", newline=None)
 
-    @patch("glocaltext.processing.processors._read_file_for_writing", side_effect=OSError("Cannot read"))
+    @patch("glocaltext.processing.writeback_processor._read_file_for_writing", side_effect=OSError("Cannot read"))
     @patch("logging.Logger.exception")
     def test_orchestrate_write_handles_os_error(self, mock_log: MagicMock, mock_read: MagicMock) -> None:
         """Write Helper: _orchestrate_file_write handles OSError during read."""

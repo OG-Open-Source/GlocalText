@@ -7,8 +7,10 @@ from typing import TYPE_CHECKING, Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from glocaltext.match_state import MatchLifecycle, SkipReason
+
 if TYPE_CHECKING:
-    from glocaltext.coverage import TextCoverage
+    from glocaltext.text_coverage import TextCoverage
 
 
 @dataclass
@@ -79,10 +81,14 @@ class TextMatch:
         task_name: The name of the task this match belongs to.
         extraction_rule: The rule used to extract this match.
         translated_text: The translated text. None if not yet translated.
-        provider: The translation provider used (e.g., 'gemini', 'google', 'manual').
+        provider: [DEPRECATED] Legacy field. Use 'lifecycle' and 'skip_reason' instead.
         tokens_used: The number of tokens consumed for the translation by an AI provider.
         coverage: Optional coverage tracking for this match. Used to determine
             if rules have fully covered the text, enabling translation skip optimization.
+        lifecycle: The current state of this match in the translation pipeline.
+        skip_reason: If lifecycle is SKIPPED, provides the structured reason why.
+        processed_text: Store the text after replace rules are applied, while keeping
+            original_text unchanged for cache consistency.
 
     """
 
@@ -92,12 +98,14 @@ class TextMatch:
     task_name: str
     extraction_rule: str
     translated_text: str | None = None
-    provider: str | None = None
     tokens_used: int | None = None
     match_id: str = field(default_factory=lambda: str(uuid.uuid4()), init=False, repr=False)
     coverage: Optional["TextCoverage"] = None
-    # Store the text after replace rules are applied, while keeping original_text unchanged for cache consistency
     processed_text: str | None = None
+
+    # State tracking fields
+    lifecycle: MatchLifecycle = MatchLifecycle.CAPTURED
+    skip_reason: SkipReason | None = None
 
     def __hash__(self) -> int:
         """Return the hash of the match instance."""
@@ -111,6 +119,27 @@ class TextMatch:
             return NotImplemented
         return self.match_id == other.match_id
 
+    # Convenience properties for state queries
+    @property
+    def is_skipped(self) -> bool:
+        """Check if this match has been skipped."""
+        return self.lifecycle == MatchLifecycle.SKIPPED
+
+    @property
+    def needs_translation(self) -> bool:
+        """Check if this match needs to be translated."""
+        return self.lifecycle == MatchLifecycle.PENDING_TRANSLATION and not self.is_skipped
+
+    @property
+    def is_translated(self) -> bool:
+        """Check if this match has been successfully translated."""
+        return self.lifecycle == MatchLifecycle.TRANSLATED
+
+    @property
+    def was_cached(self) -> bool:
+        """Check if this match was resolved from cache."""
+        return self.lifecycle == MatchLifecycle.CACHED
+
     def to_dict(self) -> dict[str, Any]:
         """
         Convert the dataclass instance to a JSON-serializable dictionary.
@@ -118,7 +147,7 @@ class TextMatch:
         Note: coverage is intentionally excluded from serialization
         as it's a runtime optimization detail, not persistent data.
         """
-        return {
+        result: dict[str, Any] = {
             "match_id": self.match_id,
             "original_text": self.original_text,
             "task_name": self.task_name,
@@ -126,9 +155,19 @@ class TextMatch:
             "translated_text": self.translated_text,
             "source_file": str(self.source_file),
             "span": self.span,
-            "provider": self.provider,
             "tokens_used": self.tokens_used,
+            "lifecycle": self.lifecycle.value,
         }
+
+        # Include skip_reason only if present (avoid cluttering output with None)
+        if self.skip_reason is not None:
+            result["skip_reason"] = {
+                "category": self.skip_reason.category,
+                "code": self.skip_reason.code,
+                "message": self.skip_reason.message,
+            }
+
+        return result
 
 
 @dataclass

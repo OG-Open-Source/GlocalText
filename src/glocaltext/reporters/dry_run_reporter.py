@@ -4,6 +4,7 @@ import logging
 from collections import defaultdict
 
 from glocaltext import paths
+from glocaltext.match_state import MatchLifecycle
 from glocaltext.models import ExecutionContext, TextMatch
 
 logger = logging.getLogger(__name__)
@@ -70,13 +71,33 @@ class DryRunReporter:
         return f"## 📂 File Details\n\n**Files Scanned:**\n{file_list_items}\n"
 
     def _build_lifecycle_tracking(self, context: ExecutionContext) -> str:
-        """Build the text lifecycle tracking section."""
+        """
+        Build the text lifecycle tracking section.
+
+        Phase 3: Uses the new state model (lifecycle and skip_reason)
+        with backward compatibility for legacy provider strings.
+        """
+        # Replace rules modify processed_text, not original_text.
+        # We identify replaced matches by checking if processed_text differs from original_text.
+        replaced_matches = [m for m in context.all_matches if m.processed_text and m.processed_text != m.original_text]
+
+        # Use lifecycle state to identify skipped matches
+        skipped_matches = [m for m in context.terminated_matches if m.lifecycle == MatchLifecycle.SKIPPED]
+
+        # Filter out SKIPPED matches from matches_to_translate for accurate reporting
+        # (e.g., same language matches are marked SKIPPED but remain in matches_to_translate)
+        actual_matches_to_translate = [m for m in context.matches_to_translate if m.lifecycle != MatchLifecycle.SKIPPED]
+
+        # Collect skipped matches that are in matches_to_translate (e.g., same language)
+        skipped_in_translation_list = [m for m in context.matches_to_translate if m.lifecycle == MatchLifecycle.SKIPPED]
+        all_skipped_matches = skipped_matches + skipped_in_translation_list
+
         return (
             "## 🔄 Text Lifecycle Tracking\n\n"
-            + self._format_match_section("Replaced by Rule", [m for m in context.terminated_matches if m.provider and m.provider.startswith("rule")])
-            + self._format_match_section("Skipped by Rule", [m for m in context.terminated_matches if m.provider == "skipped"])
+            + self._format_match_section("Replaced by Rule", replaced_matches)
+            + self._format_match_section("Skipped by Rule", all_skipped_matches)
             + self._format_match_section("Found in Cache", context.cached_matches)
-            + self._format_match_section("Would be Translated", context.matches_to_translate)
+            + self._format_match_section("Would be Translated", actual_matches_to_translate)
         )
 
     def _format_match_section(self, title: str, matches: list[TextMatch]) -> str:
@@ -96,20 +117,38 @@ class DryRunReporter:
             content += "| Original Text | Details |\n"
             content += "|---|---|\n"
             for match in file_matches:
-                details = f"Provider: `{match.provider}`"
+                details = f"Lifecycle: `{match.lifecycle.value}`"
+                if match.skip_reason:
+                    details += f"<br>Skip Reason: `{match.skip_reason.code}`"
                 if match.translated_text:
                     details += f"<br>Translation: `{match.translated_text}`"
-                content += f"| `{self._escape_markdown(match.original_text)}` | {details} |\n"
+
+                # Replace rules modify processed_text, not original_text.
+                # original_text is kept immutable for cache consistency.
+                # We display processed_text in reports to show the actual text
+                # that will be sent for translation.
+                if match.processed_text and match.processed_text != match.original_text:
+                    # Show before → after comparison for replaced text
+                    content += f"| `{self._escape_markdown(match.original_text)}` → `{self._escape_markdown(match.processed_text)}` | {details} |\n"
+                else:
+                    # Show original text only if not replaced
+                    display_text = match.processed_text if match.processed_text else match.original_text
+                    content += f"| `{self._escape_markdown(display_text)}` | {details} |\n"
             content += "\n"
         return header + content
 
     def _build_batch_plan(self, context: ExecutionContext) -> str:
         """Build the simulated batch processing plan section."""
-        to_translate_count = len(context.matches_to_translate)
+        # Filter out SKIPPED matches (e.g., same language) for accurate count
+        actual_matches_to_translate = [m for m in context.matches_to_translate if m.lifecycle != MatchLifecycle.SKIPPED]
+        to_translate_count = len(actual_matches_to_translate)
+
         if to_translate_count == 0:
             return "## 🚀 Batch Processing Plan (Simulated)\n\nNo new translations required.\n"
 
-        unique_texts = {m.original_text for m in context.matches_to_translate}
+        # Use processed_text (after replace rules) if available, otherwise use original_text
+        # This ensures the batch plan shows the actual text that will be sent to the translator
+        unique_texts = {(m.processed_text if m.processed_text else m.original_text) for m in actual_matches_to_translate}
         unique_count = len(unique_texts)
 
         return (

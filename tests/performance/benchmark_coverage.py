@@ -26,8 +26,8 @@ import regex
 # Add parent directory to path to import glocaltext modules
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.glocaltext.coverage import TextCoverage
-from src.glocaltext.types import ActionRule, MatchRule, Rule, TextMatch
+from glocaltext.text_coverage import TextCoverage
+from glocaltext.types import ActionRule, MatchRule, Rule, TextMatch
 
 
 class CoverageBenchmark:
@@ -243,7 +243,7 @@ class CoverageBenchmark:
         text = "abcdefghij " * 100
 
         # Create 50 skip rules (one for each letter and digit combination)
-        rules = []
+        rules: list[Rule] = []
         for char in "abcdefghijklmnopqrstuvwxyz0123456789":
             if len(rules) >= 50:
                 break

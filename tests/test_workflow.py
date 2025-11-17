@@ -4,7 +4,7 @@ import unittest
 from importlib.metadata import PackageNotFoundError
 from unittest.mock import MagicMock, patch
 
-from pyfakefs.fake_filesystem_unittest import TestCase
+from pyfakefs.fake_filesystem_unittest import TestCase  # type: ignore[import-not-found]
 
 from glocaltext import _get_version
 from glocaltext.config import GlocalConfig, ProviderSettings

@@ -1,6 +1,6 @@
-# For Gemini
+# Google Gemini Docs
 
-# https://ai.google.dev/gemini-api/docs/migrate.md.txt
+## [Migrate to the Google GenAI SDK](https://ai.google.dev/gemini-api/docs/migrate)
 
 Starting with the Gemini 2.0 release in late 2024, we introduced a new set of libraries called the [Google GenAI SDK](https://ai.google.dev/gemini-api/docs/libraries). It offers an improved developer experience through an [updated client architecture](https://ai.google.dev/gemini-api/docs/migrate#client), and [simplifies the transition](https://ai.google.dev/gemini-api/docs/migrate-to-cloud) between developer and enterprise workflows.
 
@@ -8,43 +8,43 @@ The Google GenAI SDK is now in [General Availability (GA)](https://ai.google.dev
 
 This guide provides before-and-after examples of migrated code to help you get started. | **Note:** The Go examples omit imports and other boilerplate code to improve readability.
 
-## Installation
+### Installation
 
-**Before**
+Before
 
-### Python
+#### Python
 
     pip install -U -q "google-generativeai"
 
-### JavaScript
+#### JavaScript
 
     npm install @google/generative-ai
 
-### Go
+#### Go
 
     go get github.com/google/generative-ai-go
 
-**After**
+After
 
-### Python
+#### Python
 
     pip install -U -q "google-genai"
 
-### JavaScript
+#### JavaScript
 
     npm install @google/genai
 
-### Go
+#### Go
 
     go get google.golang.org/genai
 
-## API access
+### API access
 
 The old SDK implicitly handled the API client behind the scenes using a variety of ad hoc methods. This made it hard to manage the client and credentials. Now, you interact through a central `Client` object. This `Client` object acts as a single entry point for various API services (e.g., `models`, `chats`, `files`, `tunings`), promoting consistency and simplifying credential and configuration management across different API calls.
 
-**Before (Less Centralized API Access)**
+Before (Less Centralized API Access)
 
-### Python
+#### Python
 
 The old SDK didn't explicitly use a top-level client object for most API calls. You would directly instantiate and interact with `GenerativeModel` objects.
 
@@ -55,7 +55,7 @@ The old SDK didn't explicitly use a top-level client object for most API calls. 
     response = model.generate_content(...)
     chat = model.start_chat(...)
 
-### JavaScript
+#### JavaScript
 
 While `GoogleGenerativeAI` was a central point for models and chat, other functionalities like file and cache management often required importing and instantiating entirely separate client classes.
 
@@ -75,7 +75,7 @@ While `GoogleGenerativeAI` was a central point for models and chat, other functi
     const uploadedFile = await fileManager.uploadFile(...);
     const cache = await cacheManager.create(...);
 
-### Go
+#### Go
 
 The `genai.NewClient` function created a client, but generative model operations were typically called on a separate `GenerativeModel` instance obtained from this client. Other services might have been accessed via distinct packages or patterns.
 
@@ -96,9 +96,9 @@ The `genai.NewClient` function created a client, but generative model operations
     // Call methods on separate client objects for other services
     uploadedFile, err := fileClient.UploadFile(...)
 
-**After (Centralized Client Object)**
+After (Centralized Client Object)
 
-### Python
+#### Python
 
     from google import genai
 
@@ -111,7 +111,7 @@ The `genai.NewClient` function created a client, but generative model operations
     my_file = client.files.upload(...)
     tuning_job = client.tunings.tune(...)
 
-### JavaScript
+#### JavaScript
 
     import { GoogleGenAI } from "@google/genai";
 
@@ -124,7 +124,7 @@ The `genai.NewClient` function created a client, but generative model operations
     const uploadedFile = await ai.files.upload(...);
     const cache = await ai.caches.create(...);
 
-### Go
+#### Go
 
     import "google.golang.org/genai"
 
@@ -137,13 +137,13 @@ The `genai.NewClient` function created a client, but generative model operations
     uploadedFile, err := client.Files.Upload(...)
     tuningJob, err := client.Tunings.Tune(...)
 
-## Authentication
+### Authentication
 
 Both legacy and new libraries authenticate using API keys. You can [create](https://aistudio.google.com/app/apikey) your API key in Google AI Studio.
 
-**Before**
+Before
 
-### Python
+#### Python
 
 The old SDK handled the API client object implicitly.
 
@@ -151,13 +151,13 @@ The old SDK handled the API client object implicitly.
 
     genai.configure(api_key=...)
 
-### JavaScript
+#### JavaScript
 
     import { GoogleGenerativeAI } from "@google/generative-ai";
 
     const genAI = new GoogleGenerativeAI("GOOGLE_API_KEY");
 
-### Go
+#### Go
 
 Import the Google libraries:
 
@@ -170,9 +170,9 @@ Create the client:
 
     client, err := genai.NewClient(ctx, option.WithAPIKey("GOOGLE_API_KEY"))
 
-**After**
+After
 
-### Python
+#### Python
 
 With Google GenAI SDK, you create an API client first, which is used to call the API. The new SDK will pick up your API key from either one of the `GEMINI_API_KEY` or `GOOGLE_API_KEY` environment variables, if you don't pass one to the client.
 
@@ -184,13 +184,13 @@ With Google GenAI SDK, you create an API client first, which is used to call the
                             # Alternatively, you could set the API key explicitly:
                             # client = genai.Client(api_key="your_api_key")
 
-### JavaScript
+#### JavaScript
 
     import { GoogleGenAI } from "@google/genai";
 
     const ai = new GoogleGenAI({apiKey: "GEMINI_API_KEY"});
 
-### Go
+#### Go
 
 Import the GenAI library:
 
@@ -202,13 +202,13 @@ Create the client:
             Backend:  genai.BackendGeminiAPI,
     })
 
-## Generate content
+### Generate content
 
-### Text
+#### Text
 
-**Before**
+Before
 
-### Python
+#### Python
 
 Previously, there were no client objects, you accessed APIs directly through `GenerativeModel` objects.
 
@@ -220,7 +220,7 @@ Previously, there were no client objects, you accessed APIs directly through `Ge
     )
     print(response.text)
 
-### JavaScript
+#### JavaScript
 
     import { GoogleGenerativeAI } from "@google/generative-ai";
 
@@ -231,7 +231,7 @@ Previously, there were no client objects, you accessed APIs directly through `Ge
     const result = await model.generateContent(prompt);
     console.log(result.response.text());
 
-### Go
+#### Go
 
     ctx := context.Background()
     client, err := genai.NewClient(ctx, option.WithAPIKey("GOOGLE_API_KEY"))
@@ -248,9 +248,9 @@ Previously, there were no client objects, you accessed APIs directly through `Ge
 
     printResponse(resp) // utility for printing response parts
 
-**After**
+After
 
-### Python
+#### Python
 
 The new Google GenAI SDK provides access to all the API methods through the `Client` object. Except for a few stateful special cases (`chat` and live-api `session`s), these are all stateless functions. For utility and uniformity, objects returned are `pydantic` classes.
 
@@ -266,7 +266,7 @@ The new Google GenAI SDK provides access to all the API methods through the `Cli
     print(response.model_dump_json(
         exclude_none=True, indent=4))
 
-### JavaScript
+#### JavaScript
 
     import { GoogleGenAI } from "@google/genai";
 
@@ -278,7 +278,7 @@ The new Google GenAI SDK provides access to all the API methods through the `Cli
     });
     console.log(response.text);
 
-### Go
+#### Go
 
     ctx := context.Background()
       client, err := genai.NewClient(ctx, nil)
@@ -292,11 +292,11 @@ The new Google GenAI SDK provides access to all the API methods through the `Cli
     }
     debugPrint(result) // utility for printing result
 
-### Image
+#### Image
 
-**Before**
+Before
 
-### Python
+#### Python
 
     import google.generativeai as genai
 
@@ -307,7 +307,7 @@ The new Google GenAI SDK provides access to all the API methods through the `Cli
     ])
     print(response.text)
 
-### JavaScript
+#### JavaScript
 
     import { GoogleGenerativeAI } from "@google/generative-ai";
 
@@ -333,7 +333,7 @@ The new Google GenAI SDK provides access to all the API methods through the `Cli
     const result = await model.generateContent([prompt, imagePart]);
     console.log(result.response.text());
 
-### Go
+#### Go
 
     ctx := context.Background()
     client, err := genai.NewClient(ctx, option.WithAPIKey("GOOGLE_API_KEY"))
@@ -358,9 +358,9 @@ The new Google GenAI SDK provides access to all the API methods through the `Cli
 
     printResponse(resp) // utility for printing response
 
-**After**
+After
 
-### Python
+#### Python
 
 Many of the same convenience features exist in the new SDK. For example, `PIL.Image` objects are automatically converted.
 
@@ -378,7 +378,7 @@ Many of the same convenience features exist in the new SDK. For example, `PIL.Im
     )
     print(response.text)
 
-### JavaScript
+#### JavaScript
 
     import {GoogleGenAI} from '@google/genai';
 
@@ -399,7 +399,7 @@ Many of the same convenience features exist in the new SDK. For example, `PIL.Im
     });
     console.log(response.text);
 
-### Go
+#### Go
 
     ctx := context.Background()
     client, err := genai.NewClient(ctx, nil)
@@ -426,11 +426,11 @@ Many of the same convenience features exist in the new SDK. For example, `PIL.Im
     }
     debugPrint(result) // utility for printing result
 
-### Streaming
+#### Streaming
 
-**Before**
+Before
 
-### Python
+#### Python
 
     import google.generativeai as genai
 
@@ -440,7 +440,7 @@ Many of the same convenience features exist in the new SDK. For example, `PIL.Im
     for chunk in response:
         print(chunk.text)
 
-### JavaScript
+#### JavaScript
 
     import { GoogleGenerativeAI } from "@google/generative-ai";
 
@@ -457,7 +457,7 @@ Many of the same convenience features exist in the new SDK. For example, `PIL.Im
       process.stdout.write(chunkText);
     }
 
-### Go
+#### Go
 
     ctx := context.Background()
     client, err := genai.NewClient(ctx, option.WithAPIKey("GOOGLE_API_KEY"))
@@ -479,9 +479,9 @@ Many of the same convenience features exist in the new SDK. For example, `PIL.Im
         printResponse(resp) // utility for printing the response
     }
 
-**After**
+After
 
-### Python
+#### Python
 
     from google import genai
 
@@ -493,7 +493,7 @@ Many of the same convenience features exist in the new SDK. For example, `PIL.Im
     ):
         print(chunk.text)
 
-### JavaScript
+#### JavaScript
 
     import {GoogleGenAI} from '@google/genai';
 
@@ -509,7 +509,7 @@ Many of the same convenience features exist in the new SDK. For example, `PIL.Im
       text += chunk.text;
     }
 
-### Go
+#### Go
 
     ctx := context.Background()
     client, err := genai.NewClient(ctx, nil)
@@ -529,11 +529,11 @@ Many of the same convenience features exist in the new SDK. For example, `PIL.Im
         fmt.Print(result.Candidates[0].Content.Parts[0].Text)
     }
 
-## Configuration
+### Configuration
 
-**Before**
+Before
 
-### Python
+#### Python
 
     import google.generativeai as genai
 
@@ -551,7 +551,7 @@ Many of the same convenience features exist in the new SDK. For example, `PIL.Im
     )
     response = model.generate_content('tell me a story in 100 words')
 
-### JavaScript
+#### JavaScript
 
     import { GoogleGenerativeAI } from "@google/generative-ai";
 
@@ -571,7 +571,7 @@ Many of the same convenience features exist in the new SDK. For example, `PIL.Im
     );
     console.log(result.response.text())
 
-### Go
+#### Go
 
     ctx := context.Background()
     client, err := genai.NewClient(ctx, option.WithAPIKey("GOOGLE_API_KEY"))
@@ -592,9 +592,9 @@ Many of the same convenience features exist in the new SDK. For example, `PIL.Im
     }
     printResponse(resp) // utility for printing response
 
-**After**
+After
 
-### Python
+#### Python
 
 For all methods in the new SDK, the required arguments are provided as keyword arguments. All optional inputs are provided in the `config` argument. Config arguments can be specified as either Python dictionaries or `Config` classes in the `google.genai.types` namespace. For utility and uniformity, all definitions within the `types` module are `pydantic` classes.
 
@@ -618,7 +618,7 @@ For all methods in the new SDK, the required arguments are provided as keyword a
       ),
     )
 
-### JavaScript
+#### JavaScript
 
     import {GoogleGenAI} from '@google/genai';
 
@@ -637,7 +637,7 @@ For all methods in the new SDK, the required arguments are provided as keyword a
 
     console.log(response.text);
 
-### Go
+#### Go
 
     ctx := context.Background()
     client, err := genai.NewClient(ctx, nil)
@@ -666,13 +666,13 @@ For all methods in the new SDK, the required arguments are provided as keyword a
     }
     debugPrint(result) // utility for printing response
 
-## Safety settings
+### Safety settings
 
 Generate a response with safety settings:
 
-**Before**
+Before
 
-### Python
+#### Python
 
     import google.generativeai as genai
 
@@ -685,7 +685,7 @@ Generate a response with safety settings:
       }
     )
 
-### JavaScript
+#### JavaScript
 
     import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 
@@ -714,9 +714,9 @@ Generate a response with safety settings:
       console.log(result.response.candidates[0].safetyRatings);
     }
 
-**After**
+After
 
-### Python
+#### Python
 
     from google import genai
     from google.genai import types
@@ -736,7 +736,7 @@ Generate a response with safety settings:
       ),
     )
 
-### JavaScript
+#### JavaScript
 
     import {GoogleGenAI} from '@google/genai';
 
@@ -762,11 +762,11 @@ Generate a response with safety settings:
     console.log("Finish reason:", response.candidates[0].finishReason);
     console.log("Safety ratings:", response.candidates[0].safetyRatings);
 
-## Async
+### Async
 
-**Before**
+Before
 
-### Python
+#### Python
 
     import google.generativeai as genai
 
@@ -775,9 +775,9 @@ Generate a response with safety settings:
         'tell me a story in 100 words'
     )
 
-**After**
+After
 
-### Python
+#### Python
 
 To use the new SDK with `asyncio`, there is a separate `async` implementation of every method under `client.aio`.
 
@@ -790,13 +790,13 @@ To use the new SDK with `asyncio`, there is a separate `async` implementation of
         contents='Tell me a story in 300 words.'
     )
 
-## Chat
+### Chat
 
 Start a chat and send a message to the model:
 
-**Before**
+Before
 
-### Python
+#### Python
 
     import google.generativeai as genai
 
@@ -808,7 +808,7 @@ Start a chat and send a message to the model:
     response = chat.send_message(
         "What happened after that?")
 
-### JavaScript
+#### JavaScript
 
     import { GoogleGenerativeAI } from "@google/generative-ai";
 
@@ -831,7 +831,7 @@ Start a chat and send a message to the model:
     result = await chat.sendMessage("How many paws are in my house?");
     console.log(result.response.text());
 
-### Go
+#### Go
 
     ctx := context.Background()
     client, err := genai.NewClient(ctx, option.WithAPIKey("GOOGLE_API_KEY"))
@@ -864,9 +864,9 @@ Start a chat and send a message to the model:
     }
     printResponse(res) // utility for printing the response
 
-**After**
+After
 
-### Python
+#### Python
 
     from google import genai
 
@@ -879,7 +879,7 @@ Start a chat and send a message to the model:
     response = chat.send_message(
         message='What happened after that?')
 
-### JavaScript
+#### JavaScript
 
     import {GoogleGenAI} from '@google/genai';
 
@@ -908,7 +908,7 @@ Start a chat and send a message to the model:
     });
     console.log("Chat response 2:", response2.text);
 
-### Go
+#### Go
 
     ctx := context.Background()
     client, err := genai.NewClient(ctx, nil)
@@ -933,11 +933,11 @@ Start a chat and send a message to the model:
     }
     debugPrint(result) // utility for printing result
 
-## Function calling
+### Function calling
 
-**Before**
+Before
 
-### Python
+#### Python
 
     import google.generativeai as genai
     from enum import Enum
@@ -960,9 +960,9 @@ Start a chat and send a message to the model:
     response = model.generate_content("What is the weather in San Francisco?")
     function_call = response.candidates[0].parts[0].function_call
 
-**After**
+After
 
-### Python
+#### Python
 
 In the new SDK, automatic function calling is the default. Here, you disable it.
 
@@ -992,11 +992,11 @@ In the new SDK, automatic function calling is the default. Here, you disable it.
 
     function_call = response.candidates[0].content.parts[0].function_call
 
-### Automatic function calling
+#### Automatic function calling
 
-**Before**
+Before
 
-### Python
+#### Python
 
 The old SDK only supports automatic function calling in chat. In the new SDK this is the default behavior in `generate_content`.
 
@@ -1014,9 +1014,9 @@ The old SDK only supports automatic function calling in chat. In the new SDK thi
         enable_automatic_function_calling=True)
     result = chat.send_message("What is the weather in San Francisco?")
 
-**After**
+After
 
-### Python
+#### Python
 
     from google import genai
     from google.genai import types
@@ -1033,13 +1033,13 @@ The old SDK only supports automatic function calling in chat. In the new SDK thi
       ),
     )
 
-## Code execution
+### Code execution
 
 Code execution is a tool that allows the model to generate Python code, run it, and return the result.
 
-**Before**
+Before
 
-### Python
+#### Python
 
     import google.generativeai as genai
 
@@ -1052,7 +1052,7 @@ Code execution is a tool that allows the model to generate Python code, run it, 
       "What is the sum of the first 50 prime numbers? Generate and run code for "
       "the calculation, and make sure you get all 50.")
 
-### JavaScript
+#### JavaScript
 
     import { GoogleGenerativeAI } from "@google/generative-ai";
 
@@ -1070,9 +1070,9 @@ Code execution is a tool that allows the model to generate Python code, run it, 
 
     console.log(result.response.text());
 
-**After**
+After
 
-### Python
+#### Python
 
     from google import genai
     from google.genai import types
@@ -1088,7 +1088,7 @@ Code execution is a tool that allows the model to generate Python code, run it, 
         ),
     )
 
-### JavaScript
+#### JavaScript
 
     import {GoogleGenAI} from '@google/genai';
 
@@ -1110,13 +1110,13 @@ Code execution is a tool that allows the model to generate Python code, run it, 
     // The `.text` accessor concatenates the parts into a markdown-formatted text.
     console.log("\n", response.text);
 
-## Search grounding
+### Search grounding
 
 `GoogleSearch` (Gemini\>=2.0) and `GoogleSearchRetrieval` (Gemini \< 2.0) are tools that allow the model to retrieve public web data for grounding, powered by Google.
 
-**Before**
+Before
 
-### Python
+#### Python
 
     import google.generativeai as genai
 
@@ -1126,9 +1126,9 @@ Code execution is a tool that allows the model to generate Python code, run it, 
         tools='google_search_retrieval'
     )
 
-**After**
+After
 
-### Python
+#### Python
 
     from google import genai
     from google.genai import types
@@ -1147,13 +1147,13 @@ Code execution is a tool that allows the model to generate Python code, run it, 
         )
     )
 
-## JSON response
+### JSON response
 
 Generate answers in JSON format.
 
-**Before**
+Before
 
-### Python
+#### Python
 
 By specifying a `response_schema` and setting `response_mime_type="application/json"` users can constrain the model to produce a `JSON` response following a given structure.
 
@@ -1179,7 +1179,7 @@ By specifying a `response_schema` and setting `response_mime_type="application/j
         ),
     )
 
-### JavaScript
+#### JavaScript
 
     import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 
@@ -1214,9 +1214,9 @@ By specifying a `response_schema` and setting `response_mime_type="application/j
     );
     console.log(result.response.text());
 
-**After**
+After
 
-### Python
+#### Python
 
 The new SDK uses `pydantic` classes to provide the schema (although you can pass a `genai.types.Schema`, or equivalent `dict`). When possible, the SDK will parse the returned JSON, and return the result in `response.parsed`. If you provided a `pydantic` class as the schema the SDK will convert that `JSON` to an instance of the class.
 
@@ -1246,7 +1246,7 @@ The new SDK uses `pydantic` classes to provide the schema (although you can pass
 
     response.parsed
 
-### JavaScript
+#### JavaScript
 
     import {GoogleGenAI} from '@google/genai';
 
@@ -1271,15 +1271,15 @@ The new SDK uses `pydantic` classes to provide the schema (although you can pass
     });
     console.log(response.text);
 
-## Files
+### Files
 
-### Upload
+#### Upload
 
 Upload a file:
 
-**Before**
+Before
 
-### Python
+#### Python
 
     import requests
     import pathlib
@@ -1299,9 +1299,9 @@ Upload a file:
     ])
     print(response.text)
 
-**After**
+After
 
-### Python
+#### Python
 
     import requests
     import pathlib
@@ -1325,13 +1325,13 @@ Upload a file:
     )
     print(response.text)
 
-### List and get
+#### List and get
 
 List uploaded files and get an uploaded file with a filename:
 
-**Before**
+Before
 
-### Python
+#### Python
 
     import google.generativeai as genai
 
@@ -1340,9 +1340,9 @@ List uploaded files and get an uploaded file with a filename:
 
     file = genai.get_file(name=file.name)
 
-**After**
+After
 
-### Python
+#### Python
 
     from google import genai
     client = genai.Client()
@@ -1352,13 +1352,13 @@ List uploaded files and get an uploaded file with a filename:
 
     file = client.files.get(name=file.name)
 
-### Delete
+#### Delete
 
 Delete a file:
 
-**Before**
+Before
 
-### Python
+#### Python
 
     import pathlib
     import google.generativeai as genai
@@ -1368,9 +1368,9 @@ Delete a file:
 
     file = genai.delete_file(name=dummy_file.name)
 
-**After**
+After
 
-### Python
+#### Python
 
     import pathlib
     from google import genai
@@ -1382,13 +1382,13 @@ Delete a file:
 
     response = client.files.delete(name=dummy_file.name)
 
-## Context caching
+### Context caching
 
 Context caching allows the user to pass the content to the model once, cache the input tokens, and then refer to the cached tokens in subsequent calls to lower the cost.
 
-**Before**
+Before
 
-### Python
+#### Python
 
     import requests
     import pathlib
@@ -1416,7 +1416,7 @@ Context caching allows the user to pass the content to the model once, cache the
     )
     response = apollo_model.generate_content("Find a lighthearted moment from this transcript")
 
-### JavaScript
+#### JavaScript
 
     import { GoogleAICacheManager, GoogleAIFileManager } from "@google/generative-ai/server";
     import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -1454,9 +1454,9 @@ Context caching allows the user to pass the content to the model once, cache the
     );
     console.log(result.response.text());
 
-**After**
+After
 
-### Python
+#### Python
 
     import requests
     import pathlib
@@ -1499,7 +1499,7 @@ Context caching allows the user to pass the content to the model once, cache the
         )
     )
 
-### JavaScript
+#### JavaScript
 
     import {GoogleGenAI} from '@google/genai';
 
@@ -1532,13 +1532,13 @@ Context caching allows the user to pass the content to the model once, cache the
     });
     console.log("Response text:", response.text);
 
-## Count tokens
+### Count tokens
 
 Count the number of tokens in a request.
 
-**Before**
+Before
 
-### Python
+#### Python
 
     import google.generativeai as genai
 
@@ -1546,7 +1546,7 @@ Count the number of tokens in a request.
     response = model.count_tokens(
         'The quick brown fox jumps over the lazy dog.')
 
-### JavaScript
+#### JavaScript
 
      import { GoogleGenerativeAI } from "@google/generative-ai";
 
@@ -1574,9 +1574,9 @@ Count the number of tokens in a request.
      // candidatesTokenCount and totalTokenCount depend on response, may vary
      // { promptTokenCount: 11, candidatesTokenCount: 124, totalTokenCount: 135 }
 
-**After**
+After
 
-### Python
+#### Python
 
     from google import genai
 
@@ -1587,7 +1587,7 @@ Count the number of tokens in a request.
         contents='The quick brown fox jumps over the lazy dog.',
     )
 
-### JavaScript
+#### JavaScript
 
     import {GoogleGenAI} from '@google/genai';
 
@@ -1605,13 +1605,13 @@ Count the number of tokens in a request.
     });
     console.log(generateResponse.usageMetadata);
 
-## Generate images
+### Generate images
 
 Generate images:
 
-**Before**
+Before
 
-### Python
+#### Python
 
     #pip install https://github.com/google-gemini/generative-ai-python@imagen
     import google.generativeai as genai
@@ -1626,9 +1626,9 @@ Generate images:
         aspect_ratio="3:4",
     )
 
-**After**
+After
 
-### Python
+#### Python
 
     from google import genai
 
@@ -1649,13 +1649,13 @@ Generate images:
         pathlib.Path(f'{n}.png').write_bytes(
             image.image.image_bytes)
 
-## Embed content
+### Embed content
 
 Generate content embeddings.
 
-**Before**
+Before
 
-### Python
+#### Python
 
     import google.generativeai as genai
 
@@ -1664,7 +1664,7 @@ Generate content embeddings.
       content='Hello world'
     )
 
-### JavaScript
+#### JavaScript
 
     import { GoogleGenerativeAI } from "@google/generative-ai";
 
@@ -1677,9 +1677,9 @@ Generate content embeddings.
 
     console.log(result.embedding);
 
-**After**
+After
 
-### Python
+#### Python
 
     from google import genai
 
@@ -1690,7 +1690,7 @@ Generate content embeddings.
       contents='Hello world',
     )
 
-### JavaScript
+#### JavaScript
 
     import {GoogleGenAI} from '@google/genai';
 
@@ -1703,15 +1703,15 @@ Generate content embeddings.
     });
     console.log(result.embeddings);
 
-## Tune a Model
+### Tune a Model
 
 Create and use a tuned model.
 
 The new SDK simplifies tuning with `client.tunings.tune`, which launches the tuning job and polls until the job is complete.
 
-**Before**
+Before
 
-### Python
+#### Python
 
     import google.generativeai as genai
     import random
@@ -1739,9 +1739,9 @@ The new SDK simplifies tuning with `client.tunings.tune`, which launches the tun
     model = genai.GenerativeModel(model_name=f'tunedModels/{name}')
     response = model.generate_content('55')
 
-**After**
+After
 
-### Python
+#### Python
 
     from google import genai
     from google.genai import types
@@ -1784,17 +1784,17 @@ The new SDK simplifies tuning with `client.tunings.tune`, which launches the tun
 
 ---
 
-# https://ai.google.dev/gemini-api/docs/structured-output.md.txt
+## [Structured Outputs](https://ai.google.dev/gemini-api/docs/structured-output)
 
 You can configure Gemini for structured output instead of unstructured text, allowing precise extraction and standardization of information for further processing. For example, you can use structured output to extract information from resumes, standardize them to build a structured database.
 
 Gemini can generate either [JSON](https://ai.google.dev/gemini-api/docs/structured-output#generating-json) or [enum values](https://ai.google.dev/gemini-api/docs/structured-output#generating-enums) as structured output.
 
-## Generating JSON
+### Generating JSON
 
 To constrain the model to generate JSON, configure a `responseSchema`. The model will then respond to any prompt with JSON-formatted output.
 
-### Python
+#### Python
 
     from google import genai
     from pydantic import BaseModel
@@ -1820,7 +1820,7 @@ To constrain the model to generate JSON, configure a `responseSchema`. The model
 
 | **Note:** [Pydantic validators](https://docs.pydantic.dev/latest/concepts/validators/) are not yet supported. If a `pydantic.ValidationError` occurs, it is suppressed, and `.parsed` may be empty/null.
 
-### JavaScript
+#### JavaScript
 
     import { GoogleGenAI, Type } from "@google/genai";
 
@@ -1859,7 +1859,7 @@ To constrain the model to generate JSON, configure a `responseSchema`. The model
 
     main();
 
-### Go
+#### Go
 
     package main
 
@@ -1908,7 +1908,7 @@ To constrain the model to generate JSON, configure a `responseSchema`. The model
         fmt.Println(result.Text())
     }
 
-### REST
+#### REST
 
     curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" \
     -H "x-goog-api-key: $GEMINI_API_KEY" \
@@ -1958,7 +1958,7 @@ The output might look like this:
       ...
     ]
 
-## Generating enum values
+### Generating enum values
 
 In some cases you might want the model to choose a single option from a list of options. To implement this behavior, you can pass an _enum_ in your schema. You can use an enum option anywhere you could use a `string` in the `responseSchema`, because an enum is an array of strings. Like a JSON schema, an enum lets you constrain model output to meet the requirements of your application.
 
@@ -1966,7 +1966,7 @@ For example, assume that you're developing an application to classify musical in
 
 In the following example, you pass an enum as the `responseSchema`, constraining the model to choose the most appropriate option.
 
-### Python
+#### Python
 
     from google import genai
     import enum
@@ -1991,7 +1991,7 @@ In the following example, you pass an enum as the `responseSchema`, constraining
     print(response.text)
     # Woodwind
 
-### JavaScript
+#### JavaScript
 
     import { GoogleGenAI, Type } from "@google/genai";
 
@@ -2011,7 +2011,7 @@ In the following example, you pass an enum as the `responseSchema`, constraining
 
     console.log(response.text);
 
-### REST
+#### REST
 
     curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" \
     -H "x-goog-api-key: $GEMINI_API_KEY" \
@@ -2035,13 +2035,13 @@ The Python library will translate the type declarations for the API. However, th
 
 There are two other ways to specify an enumeration. You can use a [`Literal`](https://docs.pydantic.dev/1.10/usage/types/#literal-type): \`\`\`
 
-### Python
+#### Python
 
     Literal["Percussion", "String", "Woodwind", "Brass", "Keyboard"]
 
 And you can also pass the schema as JSON:
 
-### Python
+#### Python
 
     from google import genai
 
@@ -2063,7 +2063,7 @@ And you can also pass the schema as JSON:
 
 Beyond basic multiple choice problems, you can use an enum anywhere in a JSON schema. For example, you could ask the model for a list of recipe titles and use a `Grade` enum to give each title a popularity grade:
 
-### Python
+#### Python
 
     from google import genai
 
@@ -2112,7 +2112,7 @@ The response might look like this:
       ...
     ]
 
-## About JSON schemas
+### About JSON schemas
 
 Configuring the model for JSON output using `responseSchema` parameter relies on `Schema` object to define its structure. This object represents a select subset of the [OpenAPI 3.0 Schema object](https://spec.openapis.org/oas/v3.0.3#schema-object), and also adds a `propertyOrdering` field. | **Tip:** On Python, when you use a Pydantic model, you don't need to directly work with `Schema` objects, as it gets automatically converted to the corresponding JSON schema. To learn more, see [JSON schemas in Python](https://ai.google.dev/gemini-api/docs/structured-output#schemas-in-python).
 
@@ -2147,12 +2147,12 @@ Here's a pseudo-JSON representation of all the `Schema` fields:
 
 The `Type` of the schema must be one of the OpenAPI [Data Types](https://spec.openapis.org/oas/v3.0.3#data-types), or a union of those types (using `anyOf`). Only a subset of fields is valid for each `Type`. The following list maps each `Type` to a subset of the fields that are valid for that type:
 
--   `string` -\> `enum`, `format`, `nullable`
--   `integer` -\> `format`, `minimum`, `maximum`, `enum`, `nullable`
--   `number` -\> `format`, `minimum`, `maximum`, `enum`, `nullable`
--   `boolean` -\> `nullable`
--   `array` -\> `minItems`, `maxItems`, `items`, `nullable`
--   `object` -\> `properties`, `required`, `propertyOrdering`, `nullable`
+- `string` -\> `enum`, `format`, `nullable`
+- `integer` -\> `format`, `minimum`, `maximum`, `enum`, `nullable`
+- `number` -\> `format`, `minimum`, `maximum`, `enum`, `nullable`
+- `boolean` -\> `nullable`
+- `array` -\> `minItems`, `maxItems`, `items`, `nullable`
+- `object` -\> `properties`, `required`, `propertyOrdering`, `nullable`
 
 Here are some example schemas showing valid type-and-field combinations:
 
@@ -2181,7 +2181,7 @@ Here are some example schemas showing valid type-and-field combinations:
 
 For complete documentation of the Schema fields as they're used in the Gemini API, see the [Schema reference](https://ai.google.dev/api/caching#Schema).
 
-### Property ordering
+#### Property ordering
 
 | **Warning:** When you're configuring a JSON schema, make sure to set `propertyOrdering[]`, and when you provide examples, make sure that the property ordering in the examples matches the schema.
 
@@ -2193,17 +2193,17 @@ To ensure a consistent, predictable ordering of properties, you can use the opti
 
 `propertyOrdering[]` -- not a standard field in the OpenAPI specification -- is an array of strings used to determine the order of properties in the response. By specifying the order of properties and then providing examples with properties in that same order, you can potentially improve the quality of results. `propertyOrdering` is only supported when you manually create `types.Schema`.
 
-### Schemas in Python
+#### Schemas in Python
 
 When you're using the Python library, the value of `response_schema` must be one of the following:
 
--   A type, as you would use in a type annotation (see the Python [`typing` module](https://docs.python.org/3/library/typing.html))
--   An instance of [`genai.types.Schema`](https://googleapis.github.io/python-genai/genai.html#genai.types.Schema)
--   The `dict` equivalent of `genai.types.Schema`
+- A type, as you would use in a type annotation (see the Python [`typing` module](https://docs.python.org/3/library/typing.html))
+- An instance of [`genai.types.Schema`](https://googleapis.github.io/python-genai/genai.html#genai.types.Schema)
+- The `dict` equivalent of `genai.types.Schema`
 
 The easiest way to define a schema is with a Pydantic type (as shown in the previous example):
 
-### Python
+#### Python
 
     config={'response_mime_type': 'application/json',
             'response_schema': list[Recipe]}
@@ -2212,25 +2212,25 @@ When you use a Pydantic type, the Python library builds out a JSON schema for yo
 
 The Python library supports schemas defined with the following types (where `AllowedType` is any allowed type):
 
--   `int`
--   `float`
--   `bool`
--   `str`
--   `list[AllowedType]`
--   `AllowedType|AllowedType|...`
--   For structured types:
-    -   `dict[str, AllowedType]`. This annotation declares all dict values to be the same type, but doesn't specify what keys should be included.
-    -   User-defined [Pydantic models](https://docs.pydantic.dev/latest/concepts/models/). This approach lets you specify the key names and define different types for the values associated with each of the keys, including nested structures.
+- `int`
+- `float`
+- `bool`
+- `str`
+- `list[AllowedType]`
+- `AllowedType|AllowedType|...`
+- For structured types:
+  - `dict[str, AllowedType]`. This annotation declares all dict values to be the same type, but doesn't specify what keys should be included.
+  - User-defined [Pydantic models](https://docs.pydantic.dev/latest/concepts/models/). This approach lets you specify the key names and define different types for the values associated with each of the keys, including nested structures.
 
-### JSON Schema support
+#### JSON Schema support
 
 [JSON Schema](https://json-schema.org/) is a more recent specification than OpenAPI 3.0, which the [Schema](https://ai.google.dev/api/caching#Schema) object is based on. Support for JSON Schema is available as a preview using the field [`responseJsonSchema`](https://ai.google.dev/api/generate-content#FIELDS.response_json_schema) which accepts any JSON Schema with the following limitations:
 
--   It only works with Gemini 2.5.
--   While all JSON Schema properties can be passed, not all are supported. See the [documentation](https://ai.google.dev/api/generate-content#FIELDS.response_json_schema) for the field for more details.
--   Recursive references can only be used as the value of a non-required object property.
--   Recursive references are unrolled to a finite degree, based on the size of the schema.
--   Schemas that contain `$ref` cannot contain any properties other than those starting with a `$`.
+- It only works with Gemini 2.5.
+- While all JSON Schema properties can be passed, not all are supported. See the [documentation](https://ai.google.dev/api/generate-content#FIELDS.response_json_schema) for the field for more details.
+- Recursive references can only be used as the value of a non-required object property.
+- Recursive references are unrolled to a finite degree, based on the size of the schema.
+- Schemas that contain `$ref` cannot contain any properties other than those starting with a `$`.
 
 Here's an example of generating a JSON Schema with Pydantic and submitting it to the model:
 
@@ -2278,53 +2278,53 @@ Here's an example of generating a JSON Schema with Pydantic and submitting it to
 
 Passing JSON Schema directly is not yet supported when using the SDK.
 
-## Best practices
+### Best practices
 
 Keep the following considerations and best practices in mind when you're using a response schema:
 
--   The size of your response schema counts towards the input token limit.
--   By default, fields are optional, meaning the model can populate the fields or skip them. You can set fields as required to force the model to provide a value. If there's insufficient context in the associated input prompt, the model generates responses mainly based on the data it was trained on.
--   A complex schema can result in an `InvalidArgument: 400` error. Complexity might come from long property names, long array length limits, enums with many values, objects with lots of optional properties, or a combination of these factors.
+- The size of your response schema counts towards the input token limit.
+- By default, fields are optional, meaning the model can populate the fields or skip them. You can set fields as required to force the model to provide a value. If there's insufficient context in the associated input prompt, the model generates responses mainly based on the data it was trained on.
+- A complex schema can result in an `InvalidArgument: 400` error. Complexity might come from long property names, long array length limits, enums with many values, objects with lots of optional properties, or a combination of these factors.
 
-    If you get this error with a valid schema, make one or more of the following changes to resolve the error:
+  If you get this error with a valid schema, make one or more of the following changes to resolve the error:
 
-    -   Shorten property names or enum names.
-    -   Flatten nested arrays.
-    -   Reduce the number of properties with constraints, such as numbers with minimum and maximum limits.
-    -   Reduce the number of properties with complex constraints, such as properties with complex formats like `date-time`.
-    -   Reduce the number of optional properties.
-    -   Reduce the number of valid values for enums.
+  - Shorten property names or enum names.
+  - Flatten nested arrays.
+  - Reduce the number of properties with constraints, such as numbers with minimum and maximum limits.
+  - Reduce the number of properties with complex constraints, such as properties with complex formats like `date-time`.
+  - Reduce the number of optional properties.
+  - Reduce the number of valid values for enums.
 
--   If you aren't seeing the results you expect, add more context to your input prompts or revise your response schema. For example, review the model's response without structured output to see how the model responds. You can then update your response schema so that it better fits the model's output. For additional troubleshooting tips on structured output, see the [troubleshooting guide](https://ai.google.dev/gemini-api/docs/troubleshooting#repetitive-tokens).
+- If you aren't seeing the results you expect, add more context to your input prompts or revise your response schema. For example, review the model's response without structured output to see how the model responds. You can then update your response schema so that it better fits the model's output. For additional troubleshooting tips on structured output, see the [troubleshooting guide](https://ai.google.dev/gemini-api/docs/troubleshooting#repetitive-tokens).
 
-## What's next
+### What's next
 
 Now that you've learned how to generate structured output, you might want to try using Gemini API tools:
 
--   [Function calling](https://ai.google.dev/gemini-api/docs/function-calling)
--   [Code execution](https://ai.google.dev/gemini-api/docs/code-execution)
--   [Grounding with Google Search](https://ai.google.dev/gemini-api/docs/grounding)
+- [Function calling](https://ai.google.dev/gemini-api/docs/function-calling)
+- [Code execution](https://ai.google.dev/gemini-api/docs/code-execution)
+- [Grounding with Google Search](https://ai.google.dev/gemini-api/docs/grounding)
 
 ---
 
-# https://ai.google.dev/gemini-api/docs/batch-api.md.txt
+## [Batch API](https://ai.google.dev/gemini-api/docs/batch-api)
 
 The Gemini Batch API is designed to process large volumes of requests asynchronously at [50% of the standard cost](https://ai.google.dev/gemini-api/docs/pricing). The target turnaround time is 24 hours, but in majority of cases, it is much quicker.
 
 Use Batch API for large-scale, non-urgent tasks such as data pre-processing or running evaluations where an immediate response is not required.
 
-## Creating a batch job
+### Creating a batch job
 
 You have two ways to submit your requests in Batch API:
 
--   **[Inline Requests](https://ai.google.dev/gemini-api/docs/batch-api#inline-requests):** A list of [`GenerateContentRequest`](https://ai.google.dev/api/batch-mode#GenerateContentRequest) objects directly included in your batch creation request. This is suitable for smaller batches that keep the total request size under 20MB. The **output** returned from the model is a list of `inlineResponse` objects.
--   **[Input File](https://ai.google.dev/gemini-api/docs/batch-api#input-file):** A [JSON Lines (JSONL)](https://jsonlines.org/) file where each line contains a complete [`GenerateContentRequest`](https://ai.google.dev/api/batch-mode#GenerateContentRequest) object. This method is recommended for larger requests. The **output** returned from the model is a JSONL file where each line is either a `GenerateContentResponse` or a status object.
+- **[Inline Requests](https://ai.google.dev/gemini-api/docs/batch-api#inline-requests):** A list of [`GenerateContentRequest`](https://ai.google.dev/api/batch-mode#GenerateContentRequest) objects directly included in your batch creation request. This is suitable for smaller batches that keep the total request size under 20MB. The **output** returned from the model is a list of `inlineResponse` objects.
+- **[Input File](https://ai.google.dev/gemini-api/docs/batch-api#input-file):** A [JSON Lines (JSONL)](https://jsonlines.org/) file where each line contains a complete [`GenerateContentRequest`](https://ai.google.dev/api/batch-mode#GenerateContentRequest) object. This method is recommended for larger requests. The **output** returned from the model is a JSONL file where each line is either a `GenerateContentResponse` or a status object.
 
-### Inline requests
+#### Inline requests
 
 For a small number of requests, you can directly embed the [`GenerateContentRequest`](https://ai.google.dev/api/batch-mode#GenerateContentRequest) objects within your [`BatchGenerateContentRequest`](https://ai.google.dev/api/batch-mode#request-body). The following example calls the [`BatchGenerateContent`](https://ai.google.dev/api/batch-mode#google.ai.generativelanguage.v1beta.BatchService.BatchGenerateContent) method with inline requests:
 
-### Python
+#### Python
 
     from google import genai
     from google.genai import types
@@ -2357,7 +2357,7 @@ For a small number of requests, you can directly embed the [`GenerateContentRequ
 
     print(f"Created batch job: {inline_batch_job.name}")
 
-### JavaScript
+#### JavaScript
 
     import {GoogleGenAI} from '@google/genai';
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -2389,7 +2389,7 @@ For a small number of requests, you can directly embed the [`GenerateContentRequ
 
     console.log(response);
 
-### REST
+#### REST
 
     curl https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:batchGenerateContent \
     -H "x-goog-api-key: $GEMINI_API_KEY" \
@@ -2419,7 +2419,7 @@ For a small number of requests, you can directly embed the [`GenerateContentRequ
         }
     }'
 
-### Input file
+#### Input file
 
 For larger sets of requests, prepare a JSON Lines (JSONL) file. Each line in this file must be a JSON object containing a user-defined key and a request object, where the request is a valid [`GenerateContentRequest`](https://ai.google.dev/api/batch-mode#GenerateContentRequest) object. The user-defined key is used in the response to indicate which output is the result of which request. For example, the request with the key defined as `request-1` will have its response annotated with the same key name.
 
@@ -2434,7 +2434,7 @@ Similarly to inline requests, you can specify other parameters like system instr
 
 You can upload this file using the [File API](https://ai.google.dev/gemini-api/docs/files) as shown in the following example. If you are working with multimodal input, you can reference other uploaded files within your JSONL file.
 
-### Python
+#### Python
 
     import json
     from google import genai
@@ -2459,7 +2459,7 @@ You can upload this file using the [File API](https://ai.google.dev/gemini-api/d
 
     print(f"Uploaded file: {uploaded_file.name}")
 
-### JavaScript
+#### JavaScript
 
     import {GoogleGenAI} from '@google/genai';
     import * as fs from "fs";
@@ -2514,7 +2514,7 @@ You can upload this file using the [File API](https://ai.google.dev/gemini-api/d
     }});
     console.log(uploadedFile.name);
 
-### REST
+#### REST
 
     tmp_batch_input_file=batch_input.tmp
     echo -e '{"contents": [{"parts": [{"text": "Describe the process of photosynthesis."}]}], "generationConfig": {"temperature": 0.7}}\n{"contents": [{"parts": [{"text": "What are the main ingredients in a Margherita pizza?"}]}]}' > batch_input.tmp
@@ -2550,7 +2550,7 @@ You can upload this file using the [File API](https://ai.google.dev/gemini-api/d
 
 The following example calls the [`BatchGenerateContent`](https://ai.google.dev/api/batch-mode#google.ai.generativelanguage.v1beta.BatchService.BatchGenerateContent) method with the input file uploaded using File API:
 
-### Python
+#### Python
 
     from google import genai
 
@@ -2566,7 +2566,7 @@ The following example calls the [`BatchGenerateContent`](https://ai.google.dev/a
 
     print(f"Created batch job: {file_batch_job.name}")
 
-### JavaScript
+#### JavaScript
 
     // Assumes `uploadedFile` is the file object from the previous step
     const fileBatchJob = await ai.batches.create({
@@ -2579,7 +2579,7 @@ The following example calls the [`BatchGenerateContent`](https://ai.google.dev/a
 
     console.log(fileBatchJob);
 
-### REST
+#### REST
 
     # Set the File ID taken from the upload response.
     BATCH_INPUT_FILE='files/123456'
@@ -2602,11 +2602,11 @@ The following is an example output that contains a job name:
 
     Created batch job from file: batches/123456789
 
-### Batch embedding support
+#### Batch embedding support
 
 You can use the Batch API to interact with the [Embeddings model](https://ai.google.dev/gemini-api/docs/embeddings) for higher throughput. To create an embeddings batch job with either [inline requests](https://ai.google.dev/gemini-api/docs/batch-api#inline-requests) or [input files](https://ai.google.dev/gemini-api/docs/batch-api#input-file), use the `batches.create_embeddings` API and specify the embeddings model.
 
-### Python
+#### Python
 
     from google import genai
 
@@ -2627,7 +2627,7 @@ You can use the Batch API to interact with the [Embeddings model](https://ai.goo
         config={'display_name': "Inlined embeddings batch"},
     )
 
-### JavaScript
+#### JavaScript
 
     // Creating an embeddings batch job with an input file request:
     let fileJob;
@@ -2650,18 +2650,18 @@ You can use the Batch API to interact with the [Embeddings model](https://ai.goo
 
 Read the Embeddings section in the [Batch API cookbook](https://github.com/google-gemini/cookbook/blob/main/quickstarts/Batch_mode.ipynb) for more examples.
 
-### Request configuration
+#### Request configuration
 
 You can include any request configurations you would use in a standard non-batch request. For example, you could specify the temperature, system instructions or even pass in other modalities. The following example shows an example inline request that contains a system instruction for one of the requests:
 
-### Python
+#### Python
 
     inline_requests_list = [
         {'contents': [{'parts': [{'text': 'Write a short poem about a cloud.'}]}]},
         {'contents': [{'parts': [{'text': 'Write a short poem about a cat.'}]}], 'system_instructions': {'parts': [{'text': 'You are a cat. Your name is Neko.'}]}}
     ]
 
-### JavaScript
+#### JavaScript
 
     inlineRequestsList = [
         {contents: [{parts: [{text: 'Write a short poem about a cloud.'}]}]},
@@ -2670,14 +2670,14 @@ You can include any request configurations you would use in a standard non-batch
 
 Similarly can specify tools to use for a request. The following example shows a request that enables the [Google Search tool](https://ai.google.dev/gemini-api/docs/google-search):
 
-### Python
+#### Python
 
     inline_requests_list = [
         {'contents': [{'parts': [{'text': 'Who won the euro 1998?'}]}]},
         {'contents': [{'parts': [{'text': 'Who won the euro 2025?'}]}], 'tools': [{'google_search ': {}}]}
     ]
 
-### JavaScript
+#### JavaScript
 
     inlineRequestsList = [
         {contents: [{parts: [{text: 'Who won the euro 1998?'}]}]},
@@ -2686,7 +2686,7 @@ Similarly can specify tools to use for a request. The following example shows a 
 
 You can specify [structured output](https://ai.google.dev/gemini-api/docs/structured-output) as well. The following example shows how to specify for your batch requests.
 
-### Python
+#### Python
 
     import time
     from google import genai
@@ -2752,7 +2752,7 @@ You can specify [structured output](https://ai.google.dev/gemini-api/docs/struct
             # The .text property is a shortcut to the generated text.
             print(inline_response.response.text)
 
-### JavaScript
+#### JavaScript
 
     import {GoogleGenAI, Type} from '@google/genai';
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -2832,20 +2832,20 @@ You can specify [structured output](https://ai.google.dev/gemini-api/docs/struct
         }
     });
 
-## Monitoring job status
+### Monitoring job status
 
 Use the operation name obtained when creating the batch job to poll its status. The state field of the batch job will indicate its current status. A batch job can be in one of the following states:
 
--   `JOB_STATE_PENDING`: The job has been created and is waiting to be processed by the service.
--   `JOB_STATE_RUNNING`: The job is in progress.
--   `JOB_STATE_SUCCEEDED`: The job completed successfully. You can now retrieve the results.
--   `JOB_STATE_FAILED`: The job failed. Check the error details for more information.
--   `JOB_STATE_CANCELLED`: The job was cancelled by the user.
--   `JOB_STATE_EXPIRED`: The job has expired because it was running or pending for more than 48 hours. The job will not have any results to retrieve. You can try submitting the job again or splitting up the requests into smaller batches.
+- `JOB_STATE_PENDING`: The job has been created and is waiting to be processed by the service.
+- `JOB_STATE_RUNNING`: The job is in progress.
+- `JOB_STATE_SUCCEEDED`: The job completed successfully. You can now retrieve the results.
+- `JOB_STATE_FAILED`: The job failed. Check the error details for more information.
+- `JOB_STATE_CANCELLED`: The job was cancelled by the user.
+- `JOB_STATE_EXPIRED`: The job has expired because it was running or pending for more than 48 hours. The job will not have any results to retrieve. You can try submitting the job again or splitting up the requests into smaller batches.
 
 You can poll the job status periodically to check for completion.
 
-### Python
+#### Python
 
     import time
     from google import genai
@@ -2875,7 +2875,7 @@ You can poll the job status periodically to check for completion.
     if batch_job.state.name == 'JOB_STATE_FAILED':
         print(f"Error: {batch_job.error}")
 
-### JavaScript
+#### JavaScript
 
     // Use the name of the job you want to check
     // e.g., inlinedBatchJob.name from the previous step
@@ -2905,11 +2905,11 @@ You can poll the job status periodically to check for completion.
         console.error(`An error occurred while polling job ${batchJob.name}:`, error);
     }
 
-## Retrieving results
+### Retrieving results
 
 Once the job status indicates your batch job has succeeded, the results are available in the `response` field.
 
-### Python
+#### Python
 
     import json
     from google import genai
@@ -2956,7 +2956,7 @@ Once the job status indicates your batch job has succeeded, the results are avai
         if batch_job.error:
             print(f"Error: {batch_job.error}")
 
-### JavaScript
+#### JavaScript
 
     // Use the name of the job you want to check
     // e.g., inlinedBatchJob.name from the previous step
@@ -3025,7 +3025,7 @@ Once the job status indicates your batch job has succeeded, the results are avai
         console.error(`An error occurred while processing job ${jobName}:`, error);
     }
 
-### REST
+#### REST
 
     BATCH_NAME="batches/123456" # Your batch job name
 
@@ -3054,11 +3054,11 @@ Once the job status indicates your batch job has succeeded, the results are avai
         echo "Batch expired after 48 hours"
     fi
 
-## Cancelling a batch job
+### Cancelling a batch job
 
 You can cancel an ongoing batch job using its name. When a job is canceled, it stops processing new requests.
 
-### Python
+#### Python
 
     from google import genai
 
@@ -3067,11 +3067,11 @@ You can cancel an ongoing batch job using its name. When a job is canceled, it s
     # Cancel a batch job
     client.batches.cancel(name=batch_job_to_cancel.name)
 
-### JavaScript
+#### JavaScript
 
     await ai.batches.cancel({name: batchJobToCancel.name});
 
-### REST
+#### REST
 
     BATCH_NAME="batches/123456" # Your batch job name
 
@@ -3084,11 +3084,11 @@ You can cancel an ongoing batch job using its name. When a job is canceled, it s
     -H "x-goog-api-key: $GEMINI_API_KEY" \
     -H "Content-Type:application/json" 2> /dev/null | jq -r '.metadata.state'
 
-## Deleting a batch job
+### Deleting a batch job
 
 You can delete an existing batch job using its name. When a job is deleted, it stops processing new requests and is removed from the list of batch jobs.
 
-### Python
+#### Python
 
     from google import genai
 
@@ -3097,11 +3097,11 @@ You can delete an existing batch job using its name. When a job is deleted, it s
     # Delete a batch job
     client.batches.delete(name=batch_job_to_delete.name)
 
-### JavaScript
+#### JavaScript
 
     await ai.batches.delete({name: batchJobToDelete.name});
 
-### REST
+#### REST
 
     BATCH_NAME="batches/123456" # Your batch job name
 
@@ -3109,50 +3109,50 @@ You can delete an existing batch job using its name. When a job is deleted, it s
     curl https://generativelanguage.googleapis.com/v1beta/$BATCH_NAME:delete \
     -H "x-goog-api-key: $GEMINI_API_KEY"
 
-## Technical details
+### Technical details
 
--   **Supported models:** Batch API supports a range of Gemini models. Refer to the [Models page](https://ai.google.dev/gemini-api/docs/models) for each model's support of Batch API. The supported modalities for Batch API are the same as what's supported on the interactive (or non-batch) API.
--   **Pricing:** Batch API usage is priced at 50% of the standard interactive API cost for the equivalent model. See the [pricing page](https://ai.google.dev/gemini-api/docs/pricing) for details. Refer to the [rate limits page](https://ai.google.dev/gemini-api/docs/rate-limits#batch-mode) for details on rate limits for this feature.
--   **Service Level Objective (SLO):** Batch jobs are designed to complete within a 24-hour turnaround time. Many jobs may complete much faster depending on their size and current system load.
--   **Caching:** [Context caching](https://ai.google.dev/gemini-api/docs/caching) is enabled for batch requests. If a request in your batch results in a cache hit, the cached tokens are priced the same as for non-batch API traffic.
+- **Supported models:** Batch API supports a range of Gemini models. Refer to the [Models page](https://ai.google.dev/gemini-api/docs/models) for each model's support of Batch API. The supported modalities for Batch API are the same as what's supported on the interactive (or non-batch) API.
+- **Pricing:** Batch API usage is priced at 50% of the standard interactive API cost for the equivalent model. See the [pricing page](https://ai.google.dev/gemini-api/docs/pricing) for details. Refer to the [rate limits page](https://ai.google.dev/gemini-api/docs/rate-limits#batch-mode) for details on rate limits for this feature.
+- **Service Level Objective (SLO):** Batch jobs are designed to complete within a 24-hour turnaround time. Many jobs may complete much faster depending on their size and current system load.
+- **Caching:** [Context caching](https://ai.google.dev/gemini-api/docs/caching) is enabled for batch requests. If a request in your batch results in a cache hit, the cached tokens are priced the same as for non-batch API traffic.
 
-## Best practices
+### Best practices
 
--   **Use input files for large requests:** For a large number of requests, always use the file input method for better manageability and to avoid hitting request size limits for the [`BatchGenerateContent`](https://ai.google.dev/api/batch-mode#google.ai.generativelanguage.v1beta.BatchService.BatchGenerateContent) call itself. Note that there's a the 2GB file size limit per input file.
--   **Error handling:** Check the `batchStats` for `failedRequestCount` after a job completes. If using file output, parse each line to check if it's a `GenerateContentResponse` or a status object indicating an error for that specific request. See the [troubleshooting guide](https://ai.google.dev/gemini-api/docs/troubleshooting#error-codes) for a complete set of error codes.
--   **Submit jobs once:** The creation of a batch job is not idempotent. If you send the same creation request twice, two separate batch jobs will be created.
--   **Break up very large batches:** While the target turnaround time is 24 hours, actual processing time can vary based on system load and job size. For large jobs, consider breaking them into smaller batches if intermediate results are needed sooner.
+- **Use input files for large requests:** For a large number of requests, always use the file input method for better manageability and to avoid hitting request size limits for the [`BatchGenerateContent`](https://ai.google.dev/api/batch-mode#google.ai.generativelanguage.v1beta.BatchService.BatchGenerateContent) call itself. Note that there's a the 2GB file size limit per input file.
+- **Error handling:** Check the `batchStats` for `failedRequestCount` after a job completes. If using file output, parse each line to check if it's a `GenerateContentResponse` or a status object indicating an error for that specific request. See the [troubleshooting guide](https://ai.google.dev/gemini-api/docs/troubleshooting#error-codes) for a complete set of error codes.
+- **Submit jobs once:** The creation of a batch job is not idempotent. If you send the same creation request twice, two separate batch jobs will be created.
+- **Break up very large batches:** While the target turnaround time is 24 hours, actual processing time can vary based on system load and job size. For large jobs, consider breaking them into smaller batches if intermediate results are needed sooner.
 
-## What's next
+### What's next
 
--   Check out the [Batch API notebook](https://colab.research.google.com/github/google-gemini/cookbook/blob/main/quickstarts/Batch_mode.ipynb) for more examples.
--   The OpenAI compatibility layer supports Batch API. Read the examples on the [OpenAI Compatibility](https://ai.google.dev/gemini-api/docs/openai#batch) page.
+- Check out the [Batch API notebook](https://colab.research.google.com/github/google-gemini/cookbook/blob/main/quickstarts/Batch_mode.ipynb) for more examples.
+- The OpenAI compatibility layer supports Batch API. Read the examples on the [OpenAI Compatibility](https://ai.google.dev/gemini-api/docs/openai#batch) page.
 
 ---
 
-# https://ai.google.dev/gemini-api/docs/caching.md.txt
+## [Context caching](https://ai.google.dev/gemini-api/docs/caching)
 
 Python JavaScript Go REST
 
 In a typical AI workflow, you might pass the same input tokens over and over to a model. The Gemini API offers two different caching mechanisms:
 
--   Implicit caching (automatically enabled on Gemini 2.5 models, no cost saving guarantee)
--   Explicit caching (can be manually enabled on most models, cost saving guarantee)
+- Implicit caching (automatically enabled on Gemini 2.5 models, no cost saving guarantee)
+- Explicit caching (can be manually enabled on most models, cost saving guarantee)
 
 Explicit caching is useful in cases where you want to guarantee cost savings, but with some added developer work.
 
-## Implicit caching
+### Implicit caching
 
 Implicit caching is enabled by default for all Gemini 2.5 models. We automatically pass on cost savings if your request hits caches. There is nothing you need to do in order to enable this. It is effective as of May 8th, 2025. The minimum input token count for context caching is 1,024 for 2.5 Flash and 4,096 for 2.5 Pro.
 
 To increase the chance of an implicit cache hit:
 
--   Try putting large and common contents at the beginning of your prompt
--   Try to send requests with similar prefix in a short amount of time
+- Try putting large and common contents at the beginning of your prompt
+- Try to send requests with similar prefix in a short amount of time
 
 You can see the number of tokens which were cache hits in the response object's `usage_metadata` field.
 
-## Explicit caching
+### Explicit caching
 
 Using the Gemini API explicit caching feature, you can pass some content to the model once, cache the input tokens, and then refer to the cached tokens for subsequent requests. At certain volumes, using cached tokens is lower cost than passing in the same corpus of tokens repeatedly.
 
@@ -3160,11 +3160,11 @@ When you cache a set of tokens, you can choose how long you want the cache to ex
 
 This section assumes that you've installed a Gemini SDK (or have curl installed) and that you've configured an API key, as shown in the [quickstart](https://ai.google.dev/gemini-api/docs/quickstart).
 
-### Generate content using a cache
+#### Generate content using a cache
 
 The following example shows how to generate content using a cached system instruction and video file.
 
-### Videos
+#### Videos
 
     import os
     import pathlib
@@ -3234,7 +3234,7 @@ The following example shows how to generate content using a cached system instru
 
     print(response.text)
 
-### PDFs
+#### PDFs
 
     from google import genai
     from google.genai import types
@@ -3282,7 +3282,7 @@ The following example shows how to generate content using a cached system instru
     # Print the generated text
     print('\n\n', response.text)
 
-### List caches
+#### List caches
 
 It's not possible to retrieve or view cached content, but you can retrieve cache metadata (`name`, `model`, `display_name`, `usage_metadata`, `create_time`, `update_time`, and `expire_time`).
 
@@ -3295,7 +3295,7 @@ To fetch the metadata for one cache object, if you know its name, use `get`:
 
     client.caches.get(name=name)
 
-### Update a cache
+#### Update a cache
 
 You can set a new `ttl` or `expire_time` for a cache. Changing anything else about the cache isn't supported.
 
@@ -3327,26 +3327,26 @@ To set the expiry time, it will accepts either a `datetime` object or an ISO-for
       )
     )
 
-### Delete a cache
+#### Delete a cache
 
 The caching service provides a delete operation for manually removing content from the cache. The following example shows how to delete a cache:
 
     client.caches.delete(cache.name)
 
-### Explicit caching using the OpenAI library
+#### Explicit caching using the OpenAI library
 
 If you're using an [OpenAI library](https://ai.google.dev/gemini-api/docs/openai), you can enable explicit caching using the `cached_content` property on [`extra_body`](https://ai.google.dev/gemini-api/docs/openai#extra-body).
 
-## When to use explicit caching
+### When to use explicit caching
 
 Context caching is particularly well suited to scenarios where a substantial initial context is referenced repeatedly by shorter requests. Consider using context caching for use cases such as:
 
--   Chatbots with extensive [system instructions](https://ai.google.dev/gemini-api/docs/system-instructions)
--   Repetitive analysis of lengthy video files
--   Recurring queries against large document sets
--   Frequent code repository analysis or bug fixing
+- Chatbots with extensive [system instructions](https://ai.google.dev/gemini-api/docs/system-instructions)
+- Repetitive analysis of lengthy video files
+- Recurring queries against large document sets
+- Frequent code repository analysis or bug fixing
 
-### How explicit caching reduces costs
+#### How explicit caching reduces costs
 
 Context caching is a paid feature designed to reduce overall operational costs. Billing is based on the following factors:
 
@@ -3356,18 +3356,18 @@ Context caching is a paid feature designed to reduce overall operational costs. 
 
 For up-to-date pricing details, refer to the Gemini API [pricing page](https://ai.google.dev/pricing). To learn how to count tokens, see the [Token guide](https://ai.google.dev/gemini-api/docs/tokens).
 
-### Additional considerations
+#### Additional considerations
 
 Keep the following considerations in mind when using context caching:
 
--   The _minimum_ input token count for context caching is 1,024 for 2.5 Flash and 2,048 for 2.5 Pro. The _maximum_ is the same as the maximum for the given model. (For more on counting tokens, see the [Token guide](https://ai.google.dev/gemini-api/docs/tokens)).
--   The model doesn't make any distinction between cached tokens and regular input tokens. Cached content is a prefix to the prompt.
--   There are no special rate or usage limits on context caching; the standard rate limits for `GenerateContent` apply, and token limits include cached tokens.
--   The number of cached tokens is returned in the `usage_metadata` from the create, get, and list operations of the cache service, and also in `GenerateContent` when using the cache.
+- The _minimum_ input token count for context caching is 1,024 for 2.5 Flash and 2,048 for 2.5 Pro. The _maximum_ is the same as the maximum for the given model. (For more on counting tokens, see the [Token guide](https://ai.google.dev/gemini-api/docs/tokens)).
+- The model doesn't make any distinction between cached tokens and regular input tokens. Cached content is a prefix to the prompt.
+- There are no special rate or usage limits on context caching; the standard rate limits for `GenerateContent` apply, and token limits include cached tokens.
+- The number of cached tokens is returned in the `usage_metadata` from the create, get, and list operations of the cache service, and also in `GenerateContent` when using the cache.
 
 ---
 
-# https://ai.google.dev/gemini-api/docs/tokens.md.txt
+## [Understand and count tokens](https://ai.google.dev/gemini-api/docs/tokens)
 
 Python JavaScript Go
 
@@ -3375,7 +3375,7 @@ Python JavaScript Go
 
 Gemini and other generative AI models process input and output at a granularity called a _token_.
 
-## About tokens
+### About tokens
 
 Tokens can be single characters like `z` or whole words like `cat`. Long words are broken up into several tokens. The set of all tokens used by the model is called the vocabulary, and the process of splitting text into tokens is called _tokenization_.
 
@@ -3383,13 +3383,13 @@ For Gemini models, a token is equivalent to about 4 characters. 100 tokens is eq
 
 When billing is enabled, the [cost of a call to the Gemini API](https://ai.google.dev/pricing) is determined in part by the number of input and output tokens, so knowing how to count tokens can be helpful.
 
-## Try out counting tokens in a Colab
+### Try out counting tokens in a Colab
 
 You can try out counting tokens by using a Colab.
 
-|---------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------| | [![](https://ai.google.dev/static/site-assets/images/docs/notebook-site-button.png)View on ai.google.dev](https://ai.google.dev/gemini-api/docs/tokens) | [![](https://www.tensorflow.org/images/colab_logo_32px.png)Try a Colab notebook](https://colab.research.google.com/github/google-gemini/cookbook/blob/main/quickstarts/Counting_Tokens.ipynb) | [![](https://www.tensorflow.org/images/GitHub-Mark-32px.png)View notebook on GitHub](https://colab.research.google.com/github/google-gemini/cookbook/blob/main/quickstarts/Counting_Tokens.ipynb) |
+|---------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------| | [![img](https://ai.google.dev/static/site-assets/images/docs/notebook-site-button.png)View on ai.google.dev](https://ai.google.dev/gemini-api/docs/tokens) | [![img](https://www.tensorflow.org/images/colab_logo_32px.png)Try a Colab notebook](https://colab.research.google.com/github/google-gemini/cookbook/blob/main/quickstarts/Counting_Tokens.ipynb) | [![img](https://www.tensorflow.org/images/GitHub-Mark-32px.png)View notebook on GitHub](https://colab.research.google.com/github/google-gemini/cookbook/blob/main/quickstarts/Counting_Tokens.ipynb) |
 
-## Context windows
+### Context windows
 
 The models available through the Gemini API have context windows that are measured in tokens. The context window defines how much input you can provide and how much output the model can generate. You can determine the size of the context window by calling the [getModels endpoint](https://ai.google.dev/api/rest/v1/models/get) or by looking in the [models documentation](https://ai.google.dev/gemini-api/docs/models/gemini).
 
@@ -3406,13 +3406,13 @@ In the following example, you can see that the `gemini-1.5-flash` model has an i
     # ( e.g., input_token_limit=30720, output_token_limit=2048 )
     https://github.com/google-gemini/api-examples/blob/9f5adb78a77820ef2d4f2a040d698481803e8214/python/count_tokens.py#L25-L31
 
-## Count tokens
+### Count tokens
 
 All input to and output from the Gemini API is tokenized, including text, image files, and other non-text modalities.
 
 You can count tokens in the following ways:
 
-### Count text tokens
+#### Count text tokens
 
     from google import genai
 
@@ -3435,7 +3435,7 @@ You can count tokens in the following ways:
     # ( e.g., prompt_token_count: 11, candidates_token_count: 73, total_token_count: 84 )
     https://github.com/google-gemini/api-examples/blob/9f5adb78a77820ef2d4f2a040d698481803e8214/python/count_tokens.py#L36-L54
 
-### Count multi-turn (chat) tokens
+#### Count multi-turn (chat) tokens
 
     from google import genai
     from google.genai import types
@@ -3479,15 +3479,15 @@ You can count tokens in the following ways:
     # ( e.g., total_tokens: 56 )
     https://github.com/google-gemini/api-examples/blob/9f5adb78a77820ef2d4f2a040d698481803e8214/python/count_tokens.py#L59-L98
 
-### Count multimodal tokens
+#### Count multimodal tokens
 
 All input to the Gemini API is tokenized, including text, image files, and other non-text modalities. Note the following high-level key points about tokenization of multimodal input during processing by the Gemini API:
 
--   With Gemini 2.0, image inputs with both dimensions \<=384 pixels are counted as 258 tokens. Images larger in one or both dimensions are cropped and scaled as needed into tiles of 768x768 pixels, each counted as 258 tokens. Prior to Gemini 2.0, images used a fixed 258 tokens.
+- With Gemini 2.0, image inputs with both dimensions \<=384 pixels are counted as 258 tokens. Images larger in one or both dimensions are cropped and scaled as needed into tiles of 768x768 pixels, each counted as 258 tokens. Prior to Gemini 2.0, images used a fixed 258 tokens.
 
--   Video and audio files are converted to tokens at the following fixed rates: video at 263 tokens per second and audio at 32 tokens per second.
+- Video and audio files are converted to tokens at the following fixed rates: video at 263 tokens per second and audio at 32 tokens per second.
 
-#### Image files
+##### Image files
 
 | **Note:** You'll get the same token count if you use a file uploaded using the File API or you provide the file as inline data.
 
@@ -3537,12 +3537,12 @@ Example that provides the image as inline data:
     # ( e.g., prompt_token_count: 264, candidates_token_count: 80, total_token_count: 345 )
     https://github.com/google-gemini/api-examples/blob/9f5adb78a77820ef2d4f2a040d698481803e8214/python/count_tokens.py#L103-L122
 
-#### Video or audio files
+##### Video or audio files
 
 Audio and video are each converted to tokens at the following fixed rates:
 
--   Video: 263 tokens per second
--   Audio: 32 tokens per second
+- Video: 263 tokens per second
+- Audio: 32 tokens per second
 
 **Note:** You'll get the same token count if you use a file uploaded using the File API or you provide the file as inline data.
 
@@ -3574,7 +3574,7 @@ Audio and video are each converted to tokens at the following fixed rates:
     # ( e.g., prompt_token_count: 301, candidates_token_count: 60, total_token_count: 361 )
     https://github.com/google-gemini/api-examples/blob/9f5adb78a77820ef2d4f2a040d698481803e8214/python/count_tokens.py#L149-L174
 
-### System instructions and tools
+#### System instructions and tools
 
 System instructions and tools also count towards the total token count for the input.
 
@@ -3584,27 +3584,27 @@ If you use function calling, the `total_tokens` count increases to reflect the a
 
 ---
 
-# https://ai.google.dev/gemini-api/docs/prompting-strategies.md.txt
+## [Prompt design strategies](https://ai.google.dev/gemini-api/docs/prompting-strategies)
 
 _Prompt design_ is the process of creating prompts, or natural language requests, that elicit accurate, high quality responses from a language model.
 
 This page introduces basic concepts, strategies, and best practices to get you started designing prompts to get the most out of Gemini AI models.
 
-## Topic-specific prompt guides
+### Topic-specific prompt guides
 
 Looking for more specific prompt strategies? Check out our other prompting guides on:
 
--   [Prompting with media files](https://ai.google.dev/gemini-api/docs/files#prompt-guide)
--   Prompting for image generation with [Imagen](https://ai.google.dev/gemini-api/docs/imagen#imagen-prompt-guide) and [Gemini Native Image Generation](https://ai.google.dev/gemini-api/docs/image-generation#prompt-guide)
--   [Prompting for video generation](https://ai.google.dev/gemini-api/docs/video#prompt-guide)
+- [Prompting with media files](https://ai.google.dev/gemini-api/docs/files#prompt-guide)
+- Prompting for image generation with [Imagen](https://ai.google.dev/gemini-api/docs/imagen#imagen-prompt-guide) and [Gemini Native Image Generation](https://ai.google.dev/gemini-api/docs/image-generation#prompt-guide)
+- [Prompting for video generation](https://ai.google.dev/gemini-api/docs/video#prompt-guide)
 
 You can find other sample prompts in the [prompt gallery](https://ai.google.dev/gemini-api/prompts) meant to interactively showcase many of the concepts shared in this guide.
 
-## Clear and specific instructions
+### Clear and specific instructions
 
 An effective and efficient way to customize model behavior is to provide it with clear and specific instructions. Instructions can be in the form of a question, step-by-step tasks, or as complex as mapping out a user's experience and mindset.
 
-### Input
+#### Input
 
 Input is the required text in the prompt that you want the model to provide a response to. Inputs can be a question that the model answers (question input), a task the model performs (task input), an entity the model operates on (entity input), or partial input that the model completes or continues (completion input).
 
@@ -3612,9 +3612,9 @@ Input is the required text in the prompt that you want the model to provide a re
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Question       | What's a good name for a flower shop that specializes in selling bouquets of dried flowers? Create a list of 5 options with just the names. | Here are 10 names for a flower shop specializing in dried flowers: 1. Everlasting Blooms 2. Dried & Delightful 3. The Petal Preserve 4. Whispers of Wildflowers 5. Forever Blooms                                                                                                            |
 | Task           | `Give me a simple list of just the things that I must bring on a camping trip. The list should have 5 items.`                               | `1. **Tent:** Your shelter from the elements. 2. **Sleeping Bag:** Stay warm and comfortable. 3. **Sleeping Pad:** Insulation and cushioning for a good night's sleep. 4. **Headlamp or Flashlight:** Light for nighttime activities. 5. **First Aid Kit:** Be prepared for minor injuries.` |
-| Entity         | Classify the following items as [large, small]: Elephant Mouse Snail                                                                        | Here's the classification: _ **Elephant:** Large _ **Mouse:** Small \* **Snail:** Small                                                                                                                                                                                                      |
+| Entity         | Classify the following items as [large, small]: Elephant Mouse Snail                                                                        | Here's the classification: _**Elephant:** Large_ **Mouse:** Small \* **Snail:** Small                                                                                                                                                                                                        |
 
-#### Partial input completion
+##### Partial input completion
 
 Generative language models work like an advanced auto completion tool. When you provide partial content, the model can provide the rest of the content or what it thinks is a continuation of that content as a response. When doing so, if you include any examples or context, the model can take those examples or context into account.
 
@@ -3628,19 +3628,19 @@ While the model did as prompted, writing out the instructions in natural languag
 
 Notice how "cheeseburger" was excluded from the output because it wasn't a part of the order.
 
-### Constraints
+#### Constraints
 
 Specify any constraints on reading the prompt or generating a response. You can tell the model what to do and not to do. For example, you can specify a constraint in the prompt on how long you want a summary to be:
 
 |---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------| | **Prompt:** `Summarize this text in one sentence: Text: A quantum computer exploits quantum mechanical phenomena to perform calculations exponentially faster than any modern traditional computer. At very tiny scales, physical matter acts as both particles and as waves, and quantum computing uses specialized hardware to leverage this behavior. The operating principles of quantum devices is beyond the scope of classical physics. When deployed at scale, quantum computers could be used in a wide variety of applications such as: in cybersecurity to break existing encryption methods while helping researchers create new ones, in meteorology to develop better weather forecasting etc. However, the current state of the art quantum computers are still largely experimental and impractical.` <br /> **Response:** `Exploiting quantum mechanical phenomena, quantum computers can perform calculations exponentially faster than traditional computers for potential applications like cybersecurity and meteorology, although they are currently largely experimental and impractical.` (gemini-2.5-flash) <br /> |
 
-### Response format
+#### Response format
 
 You can give instructions that specify the format of the response. For example, you can ask for the response to be formatted as a table, bulleted list, elevator pitch, keywords, sentence, or paragraph. The following system instruction tells the model to be more conversational in its response:
 
 |----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------| | **System instruction** `All questions should be answered comprehensively with details, unless the user requests a concise response specifically.` **Prompt** `What is a smart way to make a business that sells DVD's in 2025?` **Response:** `Starting a business selling DVDs in 2025 presents significant challenges due to the overwhelming dominance of digital streaming and on-demand services; a "smart" approach would therefore require a highly specialized niche, a strong value proposition beyond just the disc, and likely a focus on community or collector markets rather than mainstream consumption. Here's a breakdown of what a smart DVD business in 2025 would likely entail: 1. Extreme Niche Specialization: You cannot compete with streaming libraries. Your business must focus on what digital doesn't offer easily or at all. This could include: * Out-of-Print & Rare Titles: Sourcing films or TV shows that have never been released digitally or are currently unavailable on major streaming platforms. ....` (gemini-2.5-flash) |
 
-#### Format responses with the completion strategy
+##### Format responses with the completion strategy
 
 The [completion strategy](https://ai.google.dev/gemini-api/docs/prompting-strategies#completion) can also help format the response. The following example prompts the model to create an essay outline:
 
@@ -3650,7 +3650,7 @@ The prompt didn't specify the format for the outline and the model chose a forma
 
 |-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------| | **Prompt:** `Create an outline for an essay about hummingbirds. I. Introduction *` **Response:** `Okay, here is an outline for an essay about hummingbirds, starting from the introduction you provided: I. Introduction * Hook: Start with a captivating fact or description about hummingbirds (e.g., their speed, iridescent colors, or tiny size). * Background: Briefly introduce hummingbirds �� where they are found (Americas), their reputation as unique birds, and their general characteristics. * Thesis Statement: State the main point of the essay, focusing on the remarkable adaptations, behaviors, and ecological significance that make hummingbirds extraordinary. .....` (gemini-2.5-flash) |
 
-## Zero-shot vs few-shot prompts
+### Zero-shot vs few-shot prompts
 
 You can include examples in the prompt that show the model what getting it right looks like. The model attempts to identify patterns and relationships from the examples and applies them when generating a response. Prompts that contain a few examples are called _few-shot_ prompts, while prompts that provide no examples are called _zero-shot_ prompts. Few-shot prompts are often used to regulate the formatting, phrasing, scoping, or general patterning of model responses. Use specific and varied examples to help the model narrow its focus and generate more accurate results.
 
@@ -3666,11 +3666,11 @@ The following prompt provides two examples that show preference to the shorter e
 
 |---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------| | **Prompt:** `Below are some examples showing a question, explanation, and answer format: Question: Why is the sky blue? Explanation1: The sky appears blue because of Rayleigh scattering, which causes shorter blue wavelengths of light to be scattered more easily than longer red wavelengths, making the sky look blue. Explanation2: Due to Rayleigh scattering effect. Answer: Explanation2 Question: What is the cause of earthquakes? Explanation1: Sudden release of energy in the Earth's crust. Explanation2: Earthquakes happen when tectonic plates suddenly slip or break apart, causing a release of energy that creates seismic waves that can shake the ground and cause damage. Answer: Explanation1 Now, Answer the following question given the example formats above: Question: How is snow formed? Explanation1: Snow is formed when water vapor in the air freezes into ice crystals in the atmosphere, which can combine and grow into snowflakes as they fall through the atmosphere and accumulate on the ground. Explanation2: Water vapor freezes into ice crystals forming snow. Answer:` **Response:** `Answer: Explanation2` (gemini-2.5-flash) |
 
-### Optimal number of examples
+#### Optimal number of examples
 
 Models like Gemini can often pick up on patterns using a few examples, though you may need to experiment with the number of examples to provide in the prompt for the best results. At the same time, if you include too many examples, the model may start to [overfit](https://developers.google.com/machine-learning/glossary#overfitting) the response to the examples.
 
-### Patterns vs anti patterns
+#### Patterns vs anti patterns
 
 Using examples to show the model a pattern to follow is more effective than using examples to show the model an anti pattern to avoid.
 
@@ -3682,11 +3682,11 @@ Using examples to show the model a pattern to follow is more effective than usin
 
 |----------------------------------------------------------------------------------------------------------------------| | **Example** `Always end haikus with an assertion: Haiku are fun A short and simple poem A joy to write` <br /> |
 
-### Consistent formatting
+#### Consistent formatting
 
 Make sure that the structure and formatting of few-shot examples are the same to avoid responses with undesired formats. One of the primary objectives of adding few-shot examples in prompts is to show the model the response format. Therefore, it is essential to ensure a consistent format across all examples, especially paying attention to XML tags, white spaces, newlines, and example splitters.
 
-## Add context
+### Add context
 
 You can include instructions and information in a prompt that the model needs to solve a problem, instead of assuming that the model has all of the required information. This contextual information helps the model understand the constraints and details of what you're asking for it to do.
 
@@ -3700,19 +3700,19 @@ To customize the response for the specific router, you can add to the prompt the
 
 |-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------| | **Prompt:** `Answer the question using the text below. Respond with only the text provided. Question: What should I do to fix my disconnected wifi? The light on my Google Wifi router is yellow and blinking slowly. Text: Color: Slowly pulsing yellow What it means: There is a network error. What to do: Check that the Ethernet cable is connected to both your router and your modem and both devices are turned on. You might need to unplug and plug in each device again. Color: Fast blinking yellow What it means: You are holding down the reset button and are factory resetting this device. What to do: If you keep holding down the reset button, after about 12 seconds, the light will turn solid yellow. Once it is solid yellow, let go of the factory reset button. Color: Solid yellow What it means: Router is factory resetting. What to do: This can take up to 10 minutes. When it's done, the device will reset itself and start pulsing white, letting you know it's ready for setup. Color: Solid red What it means: Something is wrong. What to do: Critical failure. Factory reset the router. If the light stays red, contact Wifi customer support.` **Response:** `Check that the Ethernet cable is connected to both your router and your modem and both devices are turned on. You might need to unplug and plug in each device again.` (gemini-2.5-flash) |
 
-## Add prefixes
+### Add prefixes
 
 A prefix is a word or phrase that you add to the prompt content that can serve several purposes, depending on where you put the prefix:
 
--   **Input prefix:** Adding a prefix to the input signals semantically meaningful parts of the input to the model. For example, the prefixes "English:" and "French:" demarcate two different languages.
--   **Output prefix:** Even though the output is generated by the model, you can add a prefix for the output in the prompt. The output prefix gives the model information about what's expected as a response. For example, the output prefix "JSON:" signals to the model that the output should be in JSON format.
--   **Example prefix:** In few-shot prompts, adding prefixes to the examples provides labels that the model can use when generating the output, which makes it easier to parse output content.
+- **Input prefix:** Adding a prefix to the input signals semantically meaningful parts of the input to the model. For example, the prefixes "English:" and "French:" demarcate two different languages.
+- **Output prefix:** Even though the output is generated by the model, you can add a prefix for the output in the prompt. The output prefix gives the model information about what's expected as a response. For example, the output prefix "JSON:" signals to the model that the output should be in JSON format.
+- **Example prefix:** In few-shot prompts, adding prefixes to the examples provides labels that the model can use when generating the output, which makes it easier to parse output content.
 
 In the following example, "Text:" is the input prefix and "The answer is:" is the output prefix.
 
 |------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------| | **Prompt:** `Classify the text as one of the following categories. - large - small Text: Rhino The answer is: large Text: Mouse The answer is: small Text: Snail The answer is: small Text: Elephant The answer is:` **Response:** `The answer is: large` (gemini-2.5-flash) |
 
-## Break down prompts into components
+### Break down prompts into components
 
 For use cases that require complex prompts, you can help the model manage this complexity by breaking things down into simpler components.
 
@@ -3722,7 +3722,7 @@ For use cases that require complex prompts, you can help the model manage this c
 
 3. **Aggregate responses:** Aggregation is when you want to perform different parallel tasks on different portions of the data and aggregate the results to produce the final output. For example, you can tell the model to perform one operation on the first part of the data, perform another operation on the rest of the data and aggregate the results.
 
-## Experiment with model parameters
+### Experiment with model parameters
 
 Each call that you send to a model includes parameter values that control how the model generates a response. The model can generate different results for different parameter values. Experiment with different parameter values to get the best values for the task. The parameters available for different models may differ. The most common parameters are the following:
 
@@ -3736,7 +3736,7 @@ Each call that you send to a model includes parameter values that control how th
 
 5. **`stop_sequences`:** Set a stop sequence to tell the model to stop generating content. A stop sequence can be any sequence of characters. Try to avoid using a sequence of characters that may appear in the generated content.
 
-## Prompt iteration strategies
+### Prompt iteration strategies
 
 Prompt design can sometimes require a few iterations before you consistently get the response you're looking for. This section provides guidance on some things you can try when iterating on your prompts:
 
@@ -3758,33 +3758,24 @@ Prompt design can sometimes require a few iterations before you consistently get
 
 3.  **Change the order of prompt content:** The order of the content in the prompt can sometimes affect the response. Try changing the content order and see how that affects the response.
 
-        Version 1:
-        [examples]
-        [context]
-        [input]
+    Version 1: [examples] [context] [input]
 
-        Version 2:
-        [input]
-        [examples]
-        [context]
+    Version 2: [input] [examples] [context]
 
-        Version 3:
-        [examples]
-        [input]
-        [context]
+    Version 3: [examples] [input] [context]
 
-## Fallback responses
+### Fallback responses
 
 A fallback response is a response returned by the model when either the prompt or the response triggers a safety filter. An example of a fallback response is "I'm not able to help with that, as I'm only a language model."
 
 If the model responds with a fallback response, try increasing the temperature.
 
-## Things to avoid
+### Things to avoid
 
--   Avoid relying on models to generate factual information.
--   Use with care on math and logic problems.
+- Avoid relying on models to generate factual information.
+- Use with care on math and logic problems.
 
-## Generative models under the hood
+### Generative models under the hood
 
 This section aims to answer the question - **_Is there randomness in generative models' responses, or are they deterministic?_**
 
@@ -3796,20 +3787,20 @@ This process is deterministic; a generative model will produce this same distrib
 
 In the second stage, the generative model converts these distributions into actual text responses through one of several decoding strategies. A simple decoding strategy might select the most likely token at every timestep. This process would always be deterministic. However, you could instead choose to generate a response by _randomly sampling_ over the distribution returned by the model. This process would be stochastic (random). Control the degree of randomness allowed in this decoding process by setting the temperature. A temperature of 0 means only the most likely tokens are selected, and there's no randomness. Conversely, a high temperature injects a high degree of randomness into the tokens selected by the model, leading to more unexpected, surprising model responses.
 
-## Next steps
+### Next steps
 
--   Now that you have a deeper understanding of prompt design, try writing your own prompts using [Google AI Studio](http://aistudio.google.com).
--   To learn about multimodal prompting, see [Prompting with media files](https://ai.google.dev/gemini-api/docs/files#prompt-guide).
--   To learn about image prompting, see the [Imagen prompt guide](https://ai.google.dev/gemini-api/docs/image-generation#imagen-prompt-guide)
--   To learn about video prompting, see the [Veo prompt guide](https://ai.google.dev/gemini-api/docs/video#prompt-guide)
+- Now that you have a deeper understanding of prompt design, try writing your own prompts using [Google AI Studio](http://aistudio.google.com).
+- To learn about multimodal prompting, see [Prompting with media files](https://ai.google.dev/gemini-api/docs/files#prompt-guide).
+- To learn about image prompting, see the [Imagen prompt guide](https://ai.google.dev/gemini-api/docs/image-generation#imagen-prompt-guide)
+- To learn about video prompting, see the [Veo prompt guide](https://ai.google.dev/gemini-api/docs/video#prompt-guide)
 
 ---
 
-# For Gemma
+# Google Gemma Docs
 
-# https://ai.google.dev/gemma/docs/core/prompt-structure.md.txt
+## [Gemma formatting and system instructions](https://ai.google.dev/gemma/docs/core/prompt-structure)
 
-## Gemma formatting and system instructions
+### Gemma formatting and system instructions
 
 Gemma instruction-tuned (IT) models are trained with a specific _formatter_ that annotates all instruction tuning examples with extra information, both at training and inference time. The formatter has two purposes:
 
@@ -3818,10 +3809,10 @@ Gemma instruction-tuned (IT) models are trained with a specific _formatter_ that
 
 Below, we specify the control tokens used by Gemma and their use cases. Note that the control tokens are reserved in and specific to our tokenizer.
 
--   Token to indicate a user turn: `user`
--   Token to indicate a model turn: `model`
--   Token to indicate the beginning of dialogue turn: `<start_of_turn>`
--   Token to indicate the end of dialogue turn: `<end_of_turn>`
+- Token to indicate a user turn: `user`
+- Token to indicate a model turn: `model`
+- Token to indicate the beginning of dialogue turn: `<start_of_turn>`
+- Token to indicate the end of dialogue turn: `<end_of_turn>`
 
 Here's an example dialogue:
 
@@ -3842,7 +3833,7 @@ The token `"<end_of_turn>\n"` is the turn separator, and the prompt prefix is `"
 
 Note that if you want to finetune the pretrained Gemma models with your own data, you can use any such schema for control tokens, as long as it's consistent between your training and inference use cases.
 
-### System instructions
+#### System instructions
 
 Gemma's instruction-tuned models are designed to work with only two roles: `user` and `model`. Therefore, the `system` role or a system turn is not supported.
 
@@ -3857,15 +3848,15 @@ Instead of using a separate system role, provide system-level instructions direc
 
 ---
 
-# https://ai.google.dev/gemma/docs/core/gemma_on_gemini_api.md.txt
+## [Run Gemma with the Gemini API](https://ai.google.dev/gemma/docs/core/gemma_on_gemini_api)
 
-## Run Gemma with the Gemini API
+### Run Gemma with the Gemini API
 
 The Gemini API provides hosted access to Gemma as a programming API you can use in application development or prototyping. This API is a convenient alternative to setting up your own local instance of Gemma and web service to handle generative AI tasks.
 
 The following examples show how to use Gemma with the Gemini API:
 
-#### Python
+##### Python
 
     from google import genai
 
@@ -3878,7 +3869,7 @@ The following examples show how to use Gemma with the Gemini API:
 
     print(response.text)
 
-#### Node.js
+##### Node.js
 
     import { GoogleGenAI } from "@google/genai";
 
@@ -3890,7 +3881,7 @@ The following examples show how to use Gemma with the Gemini API:
     });
     console.log(response.text);
 
-#### REST
+##### REST
 
     curl "https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=<var translate="no">YOUR_API_KEY</var>" \
     -H 'Content-Type: application/json' \
@@ -3905,13 +3896,13 @@ The following examples show how to use Gemma with the Gemini API:
 
 You can access the Gemini API on many platforms, such as mobile, web, and cloud services, and with multiple programming languages. For more information on Gemini API SDK packages, see the Gemini API [SDK downloads](https://ai.google.dev/gemini-api/docs/downloads) page. For a general introduction to the Gemini API, see the [Gemini API quickstart](https://ai.google.dev/gemini-api/docs/quickstart).
 
-### Image Understanding
+#### Image Understanding
 
 Gemma 3 models can process images, enabling many frontier developer use cases that would have historically required domain specific models.
 
 The following examples show how to use Gemma Image inputs with the Gemini API:
 
-#### Python
+##### Python
 
     from google import genai
 
@@ -3926,7 +3917,7 @@ The following examples show how to use Gemma Image inputs with the Gemini API:
 
     print(response.text)
 
-#### Node.js
+##### Node.js
 
     import {
       GoogleGenAI,
@@ -3951,7 +3942,7 @@ The following examples show how to use Gemma Image inputs with the Gemini API:
     console.log(response.text);
      ```
 
-#### REST
+##### REST
 
     IMAGE_PATH="cats-and-dogs.jpg"
     MIME_TYPE=$(file -b --mime-type "${IMAGE_PATH}")

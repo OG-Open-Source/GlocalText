@@ -1,21 +1,17 @@
 """
-Initializes the processing module and exports the processor classes.
+Processing pipeline components.
 
-This __init__.py file makes the processor classes easily accessible
-for import into other parts of the application, such as the main workflow
-orchestrator. By explicitly exporting them, we create a clear public API
-for this module.
+This module provides a set of processor classes for the GlocalText
+translation workflow. Each processor implements a specific stage
+of the pipeline.
 """
 
-from .processors import (
-    CacheProcessor,
-    CacheUpdateProcessor,
-    CaptureProcessor,
-    Processor,
-    TerminatingRuleProcessor,
-    TranslationProcessor,
-    WriteBackProcessor,
-)
+from .base import Processor
+from .cache_processors import CacheProcessor, CacheUpdateProcessor
+from .capture_processor import CaptureProcessor
+from .termination_processor import TerminatingRuleProcessor
+from .translation_processor import TranslationProcessor
+from .writeback_processor import WriteBackProcessor
 
 __all__ = [
     "CacheProcessor",

@@ -42,12 +42,12 @@ def _calculate_metrics(all_matches: list[TextMatch]) -> dict[str, Any]:
     unique_texts: set[str] = set()
 
     for match in all_matches:
-        # Provider breakdown
-        provider = match.provider or "unknown"
-        provider_breakdown[provider]["count"] += 1
+        # Lifecycle state breakdown
+        lifecycle_key = match.lifecycle.value if match.lifecycle else "unknown"
+        provider_breakdown[lifecycle_key]["count"] += 1
         tokens_used = match.tokens_used or 0
         total_tokens += tokens_used
-        provider_breakdown[provider]["tokens"] += tokens_used
+        provider_breakdown[lifecycle_key]["tokens"] += tokens_used
 
         # Extraction rule breakdown
         if hasattr(match, "extraction_rule") and match.extraction_rule:

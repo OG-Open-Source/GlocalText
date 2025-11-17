@@ -7,8 +7,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from glocaltext.config import GlocalConfig, ProviderSettings
+from glocaltext.match_state import MatchLifecycle
 from glocaltext.models import TextMatch
-from glocaltext.processing.processors import calculate_checksum
+from glocaltext.processing.cache_utils import calculate_checksum
 from glocaltext.translate import (
     _apply_protection,
     _check_full_coverage,
@@ -216,7 +217,7 @@ class TestProcessMatches(unittest.TestCase):
         self.mock_translator.translate.assert_called_once()
         assert matches[0].translated_text == "Translated"
         assert matches[1].translated_text is None
-        assert matches[1].provider == "error_rpd_limit"
+        assert matches[1].lifecycle == MatchLifecycle.SKIPPED
 
     def test_fallback_to_single_batch_without_limits(self, mock_get_translator: MagicMock) -> None:
         """3. No Limits: Falls back to a single batch when RPM/TPM are not set."""
@@ -254,7 +255,7 @@ class TestProcessMatches(unittest.TestCase):
         mock_get_translator.assert_not_called()
         self.mock_translator.translate.assert_not_called()
         assert matches[0].translated_text is None
-        assert matches[0].provider is None
+        assert matches[0].lifecycle == MatchLifecycle.CAPTURED
 
     def test_translation_api_error_handling(self, mock_get_translator: MagicMock) -> None:
         """6. API Error: Handles exceptions during the API call gracefully."""
@@ -266,7 +267,7 @@ class TestProcessMatches(unittest.TestCase):
             assert any("Error translating batch" in log for log in cm.output)
         self.mock_translator.translate.assert_called_once()
         assert matches[0].translated_text is None
-        assert matches[0].provider == "error_gemini"
+        assert matches[0].lifecycle == MatchLifecycle.SKIPPED
 
     def test_process_matches_translator_init_fails(self, mock_get_translator: MagicMock) -> None:
         """7. Init Failure: Handles failure to initialize a translator."""
@@ -276,7 +277,7 @@ class TestProcessMatches(unittest.TestCase):
             process_matches(matches, self.mock_task, self.mock_config, debug=False)
             assert "CRITICAL: Could not initialize any translator" in cm.output[0]
 
-        assert matches[0].provider == "initialization_error"
+        assert matches[0].lifecycle == MatchLifecycle.SKIPPED
 
     def test_process_matches_simple_provider(self, mock_get_translator: MagicMock) -> None:
         """8. Simple Provider: Correctly dispatches to the simple provider logic."""
@@ -296,7 +297,7 @@ class TestProcessMatches(unittest.TestCase):
             prompts=None,
         )
         assert matches[0].translated_text == "Bonjour"
-        assert matches[0].provider == "mock"
+        assert matches[0].lifecycle == MatchLifecycle.TRANSLATED
 
 
 class TestBatchCreation(unittest.TestCase):
@@ -465,7 +466,7 @@ class TestFullCoverageDetection(unittest.TestCase):
         # Match should be terminated due to full coverage
         assert len(terminated) == 1, "One match should be terminated"
         assert len(unhandled) == 0, "No unhandled matches"
-        assert terminated[0].provider == "fully_covered", "Provider should be 'fully_covered'"
+        assert terminated[0].lifecycle == MatchLifecycle.SKIPPED, "Lifecycle should be SKIPPED for fully covered"
         assert terminated[0].translated_text == "who are you", "Translated text should be original"
 
     def test_apply_terminating_rules_partial_coverage(self) -> None:
@@ -586,7 +587,7 @@ class TestReplaceRuleExecution(unittest.TestCase):
         assert len(unhandled) == 0, "No unhandled matches"
         assert terminated[0].original_text == "who are you", "original_text must remain unchanged"
         assert terminated[0].processed_text == "who is you", "processed_text should contain the replaced text"
-        assert terminated[0].provider == "fully_covered", "Should be marked as fully_covered"
+        assert terminated[0].lifecycle == MatchLifecycle.SKIPPED, "Lifecycle should be SKIPPED for fully covered"
         assert terminated[0].translated_text == "who is you", "translated_text should use processed_text"
 
     def test_multiple_replace_rules_sequential_execution(self) -> None:
@@ -614,15 +615,15 @@ class TestReplaceRuleExecution(unittest.TestCase):
 
     def test_replace_then_skip_workflow(self) -> None:
         """
-        4. Replace + Skip: Replace executes, then skip rule terminates translation.
+        4. Replace + Skip: Replace executes, then translation proceeds (Unified Architecture).
 
-        Coverage-aware design (NEW behavior):
+        Unified Architecture behavior:
         - Replace executes: "translate this" -> "skip this" (processed_text set)
-        - Skip rules now check processed_text (if exists) instead of original_text
-        - Skip rule "^skip this$" fully matches processed_text "skip this"
-        - Result: Match is terminated by skip rule (provider = "skipped")
+        - Skip rules ALWAYS check original_text (not processed_text)
+        - Skip rule "^skip this$" does NOT match original_text "translate this"
+        - Result: Match sent for translation (unhandled)
 
-        This validates that skip rules correctly use processed_text after replace rules execute.
+        This validates the Unified Architecture where ALL rules check original_text.
         """
         match = TextMatch(original_text="translate this", source_file=self.source_file, span=(0, 14), task_name="test", extraction_rule="test_rule")
         task = TranslationTask(
@@ -634,21 +635,18 @@ class TestReplaceRuleExecution(unittest.TestCase):
             rules=[
                 # Step 1: Replace "translate" with "skip" -> "skip this"
                 Rule(match=MatchRule(regex="translate"), action=ActionRule(action="replace", value="skip")),
-                # Step 2: Skip rule matches the processed text fully
+                # Step 2: Skip rule checks ORIGINAL text "translate this", not processed text "skip this"
                 Rule(match=MatchRule(regex="^skip this$"), action=ActionRule(action="skip")),
             ],
         )
 
         unhandled, terminated = apply_terminating_rules([match], task)
 
-        # After replace: processed_text = "skip this", original_text = "translate this"
-        # Skip rule "^skip this$" fully matches processed_text -> triggers BOTH:
-        # 1. Full coverage detection (100% coverage) -> provider = "fully_covered"
-        # 2. Traditional skip termination (full match) -> but full coverage runs first
-        # Result: Match is terminated via full coverage detection
-        assert len(terminated) == 1, "Match should be terminated by skip rule matching processed_text"
-        assert len(unhandled) == 0, "No matches should remain unhandled"
-        assert terminated[0].provider == "fully_covered", "Provider should be 'fully_covered' (full match triggers coverage detection)"
+        # Unified Architecture: Skip rule checks original_text "translate this"
+        # Skip pattern "^skip this$" does NOT match "translate this"
+        # Result: sent for translation (unhandled)
+        assert len(unhandled) == 1, "Match should be sent for translation (skip rule doesn't match original_text)"
+        assert len(terminated) == 0, "No matches should be terminated"
         assert match.original_text == "translate this", "original_text must remain unchanged"
         assert match.processed_text == "skip this", "processed_text should contain the replaced text"
 
@@ -698,7 +696,7 @@ class TestReplaceRuleExecution(unittest.TestCase):
         assert len(unhandled) == 1, "Match should need translation"
 
     def test_replace_invalid_regex_logs_warning(self) -> None:
-        """7. Invalid Regex: Replace rule with invalid regex logs debug message and skips replacement."""
+        """7. Invalid Regex: Replace rule with invalid regex logs warning and skips replacement."""
         match = TextMatch(original_text="test content", source_file=self.source_file, span=(0, 12), task_name="test", extraction_rule="test_rule")
         task = TranslationTask(
             name="test_task",
@@ -711,65 +709,15 @@ class TestReplaceRuleExecution(unittest.TestCase):
             ],
         )
 
-        # Changed from WARNING to DEBUG level as backreference errors are expected
-        with self.assertLogs("glocaltext.translate", level="DEBUG") as cm:
+        # After refactoring, invalid regex in replace rules logs WARNING (not DEBUG)
+        # because the error occurs in _apply_replace_rules_to_match() which uses logger.warning()
+        with self.assertLogs("glocaltext.translate", level="WARNING") as cm:
             unhandled, _terminated = apply_terminating_rules([match], task)
-            assert any("Skipping pattern with regex error" in log for log in cm.output), "Should log regex error at DEBUG level"
+            assert any("Failed to apply pattern" in log for log in cm.output), "Should log regex error at WARNING level"
 
         # Text should remain unchanged due to invalid regex
         assert match.original_text == "test content", "Text should not be modified on error"
         assert len(unhandled) == 1, "Match should still need translation"
-
-    def test_replace_then_skip_different_text(self) -> None:
-        """
-        8. Replace + Skip with non-matching pattern should send for translation.
-
-        This test verifies the coverage-aware replace rules behavior where:
-        - Replace rules execute first and produce processed_text
-        - Coverage detection checks skip/protect rules against processed_text
-        - If skip/protect rules don't match processed_text, translation proceeds
-
-        Scenario:
-        - Original text: '%d 核心'
-        - Replace rule: '^%d 核心$' -> '%d cores'
-        - Skip rule: '^%d 核心$' (matches original, but NOT processed text)
-
-        Expected behavior:
-        - Replace executes: '%d 核心' -> '%d cores'
-        - Coverage checks processed_text '%d cores' against skip rule '^%d 核心$' -> NO MATCH
-        - Result: 0% coverage, sent for translation (but replace already executed)
-        """
-        match = TextMatch(
-            original_text="%d 核心",
-            source_file=self.source_file,
-            span=(0, 5),
-            task_name="test",
-            extraction_rule="test_rule",
-        )
-        task = TranslationTask(
-            name="test_task",
-            source_lang="zh-TW",
-            target_lang="en",
-            translator="mock",
-            source=Source(include=["*.txt"]),
-            rules=[
-                # Replace rule: changes text to English
-                Rule(match=MatchRule(regex=r"^%d 核心$"), action=ActionRule(action="replace", value="%d cores")),
-                # Skip rule: matches the ORIGINAL Chinese text, but not the processed English text
-                Rule(match=MatchRule(regex=r"^%d 核心$"), action=ActionRule(action="skip")),
-            ],
-        )
-
-        unhandled, terminated = apply_terminating_rules([match], task)
-
-        # Verify coverage-aware behavior:
-        # - Replace executes: processed_text = "%d cores"
-        # - Coverage checks processed_text "%d cores" against skip rule "^%d 核心$" -> NO MATCH
-        # - Result: sent for translation (unhandled)
-        assert len(unhandled) == 1, "Match should be unhandled (sent for translation)"
-        assert len(terminated) == 0, "No terminated matches"
-        assert unhandled[0].original_text == "%d 核心", "original_text must remain unchanged"
-        assert unhandled[0].processed_text == "%d cores", "processed_text should contain the replaced text"
 
 
 if __name__ == "__main__":

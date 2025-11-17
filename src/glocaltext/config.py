@@ -6,6 +6,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Literal
 
+import regex
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from ruamel.yaml import YAML
@@ -205,6 +206,14 @@ def _parse_rules(rules_data: dict[str, Any] | list) -> list[Rule]:
                 action=ActionRule(action="replace", value=str(replacement)),
             )
             expanded_rules.append(rule)
+
+    # Validate all regex patterns before returning
+    for rule in expanded_rules:
+        try:
+            regex.compile(rule.match.regex, regex.DOTALL)
+        except regex.error as e:
+            msg = f"Invalid regex pattern in {rule.action.action} rule: '{rule.match.regex}' - {e}"
+            raise ValueError(msg) from e
 
     return expanded_rules
 

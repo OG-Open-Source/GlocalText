@@ -4,7 +4,7 @@ import unittest
 
 import pytest
 
-from glocaltext.coverage import TextCoverage, calculate_total_coverage, merge_ranges
+from glocaltext.text_coverage import TextCoverage, calculate_total_coverage, merge_ranges
 
 
 class TestMergeRanges(unittest.TestCase):
