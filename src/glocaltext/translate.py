@@ -127,13 +127,23 @@ def _check_rule_match(text: str, rule: Rule) -> tuple[bool, str | None]:
         return False, None
 
     conditions = [rule.match.regex] if isinstance(rule.match.regex, str) else rule.match.regex
-    for r in conditions:
+
+    # Validate patterns before loop
+    def is_valid_pattern(pattern: str) -> bool:
         try:
-            if regex.search(r, text, regex.DOTALL):
-                return True, r
+            regex.compile(pattern, regex.DOTALL)
         except regex.error as e:
-            # This should rarely happen now that we filter replace rules
-            logger.debug("[Rule Match] Skipping pattern with regex error: '%s...' - %s", r[:_PATTERN_LOG_MAX_LENGTH] if len(r) > _PATTERN_LOG_MAX_LENGTH else r, e)
+            logger.debug("[Rule Match] Skipping pattern with regex error: '%s...' - %s", pattern[:_PATTERN_LOG_MAX_LENGTH] if len(pattern) > _PATTERN_LOG_MAX_LENGTH else pattern, e)
+            return False
+        else:
+            return True
+
+    valid_patterns = [r for r in conditions if is_valid_pattern(r)]
+
+    # Search with validated patterns
+    for r in valid_patterns:
+        if regex.search(r, text, regex.DOTALL):
+            return True, r
     return False, None
 
 
@@ -241,76 +251,6 @@ def _apply_protect_rule(
 
     # Apply protection using the matched pattern from original text on current text
     return _apply_protection(current_text, matched_value, protected_map)
-
-
-def _handle_rule_action(
-    text: str,
-    matches: list[TextMatch],
-    rule: Rule,
-    protected_map: dict[str, str],
-) -> tuple[str, bool]:
-    r"""
-    Dispatch a rule action to the appropriate handler.
-
-    Args:
-        text: The text to process
-        matches: List of TextMatch objects
-        rule: The rule to apply
-        protected_map: Dictionary for protected content mapping
-
-    Returns:
-        tuple: (modified_text, is_handled)
-            - modified_text: The text after applying the rule (may be unchanged)
-            - is_handled: True if the rule terminated processing (skip/protect)
-
-    Note:
-        Replace actions use regex.sub() for partial matching. The pattern doesn't
-        need to match the entire text - it can match and replace any portion.
-        Patterns may contain backreferences (\1, \2, etc.) which only work in regex.sub().
-
-    """
-    action = rule.action.action
-    is_handled = False
-
-    # Special handling for replace rules: use regex.sub() directly
-    # because their patterns contain backreferences that don't work with regex.search()
-    if action == "replace":
-        # For replace rules, try to apply the replacement directly
-        # regex.sub() supports both partial matching and backreferences
-        patterns = [rule.match.regex] if isinstance(rule.match.regex, str) else rule.match.regex
-        for pattern in patterns:
-            try:
-                new_text = regex.sub(pattern, rule.action.value or "", text, regex.DOTALL)
-                if new_text != text:
-                    # Log with text snippets for better debugging
-                    original_snippet = text[:_TEXT_SNIPPET_MAX_LENGTH] + "..." if len(text) > _TEXT_SNIPPET_MAX_LENGTH else text
-                    new_snippet = new_text[:_TEXT_SNIPPET_MAX_LENGTH] + "..." if len(new_text) > _TEXT_SNIPPET_MAX_LENGTH else new_text
-                    logger.debug(
-                        "[REPLACE ACTION] Applied pattern '%s...' | Original: '%s' → Modified: '%s'",
-                        pattern[:30],
-                        original_snippet,
-                        new_snippet,
-                    )
-                    return new_text, False
-                logger.debug("[REPLACE ACTION] No match for pattern '%s...'", pattern[:30])
-            # Note: try-except in loop - acceptable here as we need to test each pattern
-            except regex.error as e:
-                logger.debug("[REPLACE ACTION] Pattern '%s...' failed: %s", pattern[:30], e)
-                continue
-        # No pattern matched
-        return text, False
-
-    # For skip and protect rules, check if pattern matches first
-    match_found, matched_value = _check_rule_match(text, rule)
-    if not match_found or not matched_value:
-        return text, False
-
-    if action == "skip":
-        is_handled = _handle_skip_action(matches)
-    elif action == "protect":
-        text = _apply_protection(text, matched_value, protected_map)
-
-    return text, is_handled
 
 
 def _apply_pre_processing_rules(
@@ -591,6 +531,40 @@ def _classify_terminating_rules(rules: list[Rule]) -> tuple[list[Rule], list[Rul
     return replace_rules, other_terminating_rules, terminating_rules
 
 
+def _apply_single_pattern(pattern: str, replacement: str, text: str) -> tuple[str, bool]:
+    """
+    Apply a single regex pattern replacement to text.
+
+    Args:
+        pattern: Regex pattern to match
+        replacement: Replacement string (may contain backreferences)
+        text: Text to process
+
+    Returns:
+        tuple: (modified_text, was_modified)
+
+    """
+    try:
+        new_text = regex.sub(pattern, replacement, text, regex.DOTALL)
+    except regex.error as e:
+        logger.warning("[Replace Rule] Failed to apply pattern '%s...': %s", pattern[:30], e)
+        return text, False
+
+    if new_text == text:
+        logger.debug("[Replace Rule] No match for pattern '%s...'", pattern[:30])
+        return text, False
+
+    original_snippet = text[:_TEXT_SNIPPET_MAX_LENGTH] + "..." if len(text) > _TEXT_SNIPPET_MAX_LENGTH else text
+    new_snippet = new_text[:_TEXT_SNIPPET_MAX_LENGTH] + "..." if len(new_text) > _TEXT_SNIPPET_MAX_LENGTH else new_text
+    logger.debug(
+        "[Replace Rule] Applied pattern '%s...' | Original: '%s' → Modified: '%s'",
+        pattern[:30],
+        original_snippet,
+        new_snippet,
+    )
+    return new_text, True
+
+
 def _apply_replace_rules_to_match(match: TextMatch, replace_rules: list[Rule]) -> None:
     r"""
     Apply all replace rules to a match, modifying its processed_text field.
@@ -614,31 +588,14 @@ def _apply_replace_rules_to_match(match: TextMatch, replace_rules: list[Rule]) -
     modified_text = match.original_text
 
     for rule in replace_rules:
-        # For replace rules, use regex.sub() directly instead of _check_rule_match()
-        # because patterns contain backreferences (\1, \2, etc.) which only work in regex.sub()
         patterns = [rule.match.regex] if isinstance(rule.match.regex, str) else rule.match.regex
+        replacement = rule.action.value or ""
 
         for pattern in patterns:
-            try:
-                new_text = regex.sub(pattern, rule.action.value or "", modified_text, regex.DOTALL)
-                if new_text != modified_text:
-                    # Log with text snippets for better debugging
-                    original_snippet = modified_text[:_TEXT_SNIPPET_MAX_LENGTH] + "..." if len(modified_text) > _TEXT_SNIPPET_MAX_LENGTH else modified_text
-                    new_snippet = new_text[:_TEXT_SNIPPET_MAX_LENGTH] + "..." if len(new_text) > _TEXT_SNIPPET_MAX_LENGTH else new_text
-                    logger.debug(
-                        "[Replace Rule] Applied pattern '%s...' | Original: '%s' → Modified: '%s'",
-                        pattern[:30],
-                        original_snippet,
-                        new_snippet,
-                    )
-                    modified_text = new_text
-                    break  # Pattern matched, move to next rule
-                logger.debug("[Replace Rule] No match for pattern '%s...'", pattern[:30])
-            except regex.error as e:
-                logger.warning("[Replace Rule] Failed to apply pattern '%s...': %s", pattern[:30], e)
-                continue
+            modified_text, was_modified = _apply_single_pattern(pattern, replacement, modified_text)
+            if was_modified:
+                break
 
-    # Store the processed text if it was modified
     if modified_text != match.original_text:
         logger.info(
             "[Replace Rules] Text modified by replace rules: '%s...' -> '%s...'",
@@ -1159,10 +1116,10 @@ def _process_simple_matches(
 
     # Simple providers handle one text at a time.
     for match in matches:
+        # Use processed_text if available (after replace rules), otherwise use original_text.
+        # This ensures replace rules' modifications are sent to the translator.
+        text_to_translate = match.processed_text if match.processed_text else match.original_text
         try:
-            # Use processed_text if available (after replace rules), otherwise use original_text.
-            # This ensures replace rules' modifications are sent to the translator.
-            text_to_translate = match.processed_text if match.processed_text else match.original_text
             results = context.translator.translate(
                 texts=[text_to_translate],
                 target_language=context.task.target_lang,
@@ -1170,14 +1127,16 @@ def _process_simple_matches(
                 debug=context.debug,
                 prompts=None,  # Simple providers don't use prompts
             )
-            if results:
-                match.translated_text = results[0].translated_text
-                match.tokens_used = results[0].tokens_used
-                match.lifecycle = MatchLifecycle.TRANSLATED
         except Exception:
             logger.exception("Error translating text '%s' with %s", match.original_text, context.provider_name)
             match.lifecycle = MatchLifecycle.SKIPPED
             match.skip_reason = SkipReason(category="mode", code="translation_error", message=f"Translation error with {context.provider_name}")
+            continue
+
+        if results:
+            match.translated_text = results[0].translated_text
+            match.tokens_used = results[0].tokens_used
+            match.lifecycle = MatchLifecycle.TRANSLATED
 
 
 def process_matches(

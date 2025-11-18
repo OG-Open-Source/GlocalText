@@ -209,10 +209,11 @@ def _parse_rules(rules_data: dict[str, Any] | list) -> list[Rule]:
 
     # Validate all regex patterns before returning
     for rule in expanded_rules:
+        pattern = rule.match.regex
         try:
-            regex.compile(rule.match.regex, regex.DOTALL)
+            regex.compile(pattern, regex.DOTALL)
         except regex.error as e:
-            msg = f"Invalid regex pattern in {rule.action.action} rule: '{rule.match.regex}' - {e}"
+            msg = f"Invalid regex pattern in {rule.action.action} rule: '{pattern}' - {e}"
             raise ValueError(msg) from e
 
     return expanded_rules

@@ -6,19 +6,19 @@ GlocalText is a powerful command-line tool that automates text translation using
 
 ## Table of Contents
 
--   [Introduction](#introduction)
--   [Key Features](#key-features)
--   [Prerequisites](#prerequisites)
--   [Installation](#installation)
--   [Quick Start](#quick-start)
--   [Configuration (`.ogos/glocaltext/configs/main.yaml`)](#configuration-ogosglocaltextconfigsmainyaml)
--   [Usage](#usage)
--   [Examples](#examples)
--   [Troubleshooting](#troubleshooting)
--   [FAQ](#faq)
--   [Contributors](#contributors)
--   [Contributing](#contributing)
--   [License](#license)
+- [Introduction](#introduction)
+- [Key Features](#key-features)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Configuration (`.ogos/glocaltext/configs/main.yaml`)](#configuration-ogosglocaltextconfigsmainyaml)
+- [Usage](#usage)
+- [Examples](#examples)
+- [Troubleshooting](#troubleshooting)
+- [FAQ](#faq)
+- [Contributors](#contributors)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
@@ -32,39 +32,39 @@ However, actions like `protect` and `replace` behave differently, allowing for *
 
 This design offers several key advantages:
 
-1.  **Predictable Control**: You know exactly which rule will apply. There's no complex logic to manage—just a straightforward, top-down priority list.
-2.  **Powerful Matching**: All matching is done via **regular expressions (Regex)**, giving you maximum power and flexibility to define patterns. A `match` condition can be a **single string** or a **list of strings**, allowing for flexible `OR` logic.
-3.  **Default Action**: If no rules match a piece of text, it is sent to the configured translation provider for automated translation.
+1. **Predictable Control**: You know exactly which rule will apply. There's no complex logic to manage—just a straightforward, top-down priority list.
+2. **Powerful Matching**: All matching is done via **regular expressions (Regex)**, giving you maximum power and flexibility to define patterns. A `match` condition can be a **single string** or a **list of strings**, allowing for flexible `OR` logic.
+3. **Default Action**: If no rules match a piece of text, it is sent to the configured translation provider for automated translation.
 
 This unified, firewall-inspired `rules` engine provides a clear and powerful way to manage your entire translation workflow, from protecting brand names to providing authoritative manual translations.
 
 ## Key Features
 
--   **Unified Regex `rules` Engine**: A single, powerful system where all matching is done via regular expressions.
--   **Top-Down Priority**: Rules are evaluated from top to bottom—the first rule that matches wins for terminating actions, providing predictable and precise control.
--   **Chainable Pre-processing**: `protect` and `replace` rules act as pre-processors, allowing you to modify text in multiple stages before it's sent to the translator.
--   **Clear Actions**: Define clear actions:
-    -   `skip`: A **terminating** action that prevents an entire text block from being translated. Ideal for code blocks or content that should never be altered.
-    -   `replace`: A **pre-processing** action that performs a Regex substitution on the text. It supports backreferences (e.g., `\1`) and is ideal for complex text manipulation or providing authoritative translations.
-    -   `protect`: A **pre-processing** action that protects a specific segment (like a brand name or variable) _within_ a larger text block, allowing the rest of the text to be translated.
--   **Multiple Provider Support**: Configure and use different translation providers like Google Translate, Gemini, and Gemma.
--   **Task-Based Configuration**: Define multiple, independent translation tasks in a single configuration file.
+- **Unified Regex `rules` Engine**: A single, powerful system where all matching is done via regular expressions.
+- **Top-Down Priority**: Rules are evaluated from top to bottom—the first rule that matches wins for terminating actions, providing predictable and precise control.
+- **Chainable Pre-processing**: `protect` and `replace` rules act as pre-processors, allowing you to modify text in multiple stages before it's sent to the translator.
+- **Clear Actions**: Define clear actions:
+  - `skip`: A **terminating** action that prevents an entire text block from being translated. Ideal for code blocks or content that should never be altered.
+  - `replace`: A **pre-processing** action that performs a Regex substitution on the text. It supports backreferences (e.g., `\1`) and is ideal for complex text manipulation or providing authoritative translations.
+  - `protect`: A **pre-processing** action that protects a specific segment (like a brand name or variable) _within_ a larger text block, allowing the rest of the text to be translated.
+- **Multiple Provider Support**: Configure and use different translation providers like Google Translate, Gemini, and Gemma.
+- **Task-Based Configuration**: Define multiple, independent translation tasks in a single configuration file.
 
 ## Prerequisites
 
 Before installing GlocalText, ensure your system meets the following requirements:
 
--   **Python**: Version 3.10 or higher
--   **Operating System**: Windows, macOS, or Linux
--   **API Keys**: You'll need an API key for your chosen translation provider:
+- **Python**: Version 3.10 or higher
+- **Operating System**: Windows, macOS, or Linux
+- **API Keys**: You'll need an API key for your chosen translation provider:
 
-    -   **Gemini**: Get your API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
-    -   **Google Translate**: Requires a Google Cloud API key with the Translation API enabled
+  - **Gemini**: Get your API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
+  - **Google Translate**: Requires a Google Cloud API key with the Translation API enabled
 
--   **Configuration Reusability**: Use `shortcuts` and `rulesets` to define reusable configuration snippets, making your setup clean and DRY.
--   **Glob Pattern Matching**: Precisely include or exclude files for translation using `glob` patterns.
--   **Flexible Output Control**: Choose to either modify original files directly (`in_place: true`) or create new, translated versions in a specified path (`in_place: false`).
--   **Incremental Translation**: Save time and cost by only translating new or modified content.
+- **Configuration Reusability**: Use `shortcuts` and `rulesets` to define reusable configuration snippets, making your setup clean and DRY.
+- **Glob Pattern Matching**: Precisely include or exclude files for translation using `glob` patterns.
+- **Flexible Output Control**: Choose to either modify original files directly (`in_place: true`) or create new, translated versions in a specified path (`in_place: false`).
+- **Incremental Translation**: Save time and cost by only translating new or modified content.
 
 ## Installation
 
@@ -101,24 +101,24 @@ Create a file at `.ogos/glocaltext/configs/main.yaml`:
 
 ```yaml
 providers:
-    gemini:
-        api_key: 'YOUR_GEMINI_API_KEY_HERE'
+  gemini:
+    api_key: 'YOUR_GEMINI_API_KEY_HERE'
 
 shortcuts:
-    .defaults:
-        translator: 'gemini'
-        source_lang: 'en'
+  .defaults:
+    translator: 'gemini'
+    source_lang: 'en'
 
 tasks:
-    - name: 'Translate to Japanese'
-      enabled: true
-      extends: '.defaults'
-      target_lang: 'ja'
-      source:
-          include: ['**/*.md']
-      output:
-          in_place: false
-          path: 'translated/ja'
+  - name: 'Translate to Japanese'
+    enabled: true
+    extends: '.defaults'
+    target_lang: 'ja'
+    source:
+      include: ['**/*.md']
+    output:
+      in_place: false
+      path: 'translated/ja'
 ```
 
 ### 3. Run Your First Translation
@@ -145,101 +145,101 @@ Here is a breakdown of the configuration structure.
 
 This section is where you configure the settings for different translation providers. You only need to configure the ones you plan to use.
 
--   **`gemini`**: Settings for Google's Gemini models.
-    -   `api_key`: Your Gemini API key.
-    -   `model`: The specific model to use (e.g., `gemini-1.5-flash-latest`).
-    -   `rpm`, `tpm`: Rate and token limits.
-    -   `batch_size`: Number of concurrent requests.
--   **`gemma`**: Settings for Google's Gemma models.
--   **`google`**: Settings for the Google Translate API.
--   **`mock`**: A mock translator for testing, which simulates translation by prefixing strings (e.g., `Hello` -> `[MOCK] Hello`).
+- **`gemini`**: Settings for Google's Gemini models.
+  - `api_key`: Your Gemini API key.
+  - `model`: The specific model to use (e.g., `gemini-1.5-flash-latest`).
+  - `rpm`, `tpm`: Rate and token limits.
+  - `batch_size`: Number of concurrent requests.
+- **`gemma`**: Settings for Google's Gemma models.
+- **`google`**: Settings for the Google Translate API.
+- **`mock`**: A mock translator for testing, which simulates translation by prefixing strings (e.g., `Hello` -> `[MOCK] Hello`).
 
 **Example:**
 
 ```yaml
 providers:
-    gemini:
-        api_key: 'YOUR_GEMINI_API_KEY'
-        model: 'gemini-1.5-flash-latest'
-        rpm: 60 # Requests per minute
-        tpm: 1000000 # Tokens per minute
-        batch_size: 20
+  gemini:
+    api_key: 'YOUR_GEMINI_API_KEY'
+    model: 'gemini-1.5-flash-latest'
+    rpm: 60 # Requests per minute
+    tpm: 1000000 # Tokens per minute
+    batch_size: 20
 ```
 
 ### 2. `shortcuts`
 
 Shortcuts are reusable configuration blocks that help keep your tasks DRY (Don't Repeat Yourself). You can define a block of settings and then inherit from it in other shortcuts or tasks using the `extends` key.
 
--   **`.defaults`**: A special shortcut that is automatically inherited by **all** tasks.
--   **Custom Shortcuts**: You can define any other shortcut (e.g., `.scripts`) and inherit from it explicitly.
--   **`extends`**: Use this key to specify which shortcut to inherit from.
+- **`.defaults`**: A special shortcut that is automatically inherited by **all** tasks.
+- **Custom Shortcuts**: You can define any other shortcut (e.g., `.scripts`) and inherit from it explicitly.
+- **`extends`**: Use this key to specify which shortcut to inherit from.
 
 **Example:**
 
 ```yaml
 shortcuts:
-    # 1. A default set of options automatically applied to all tasks.
-    .defaults:
-        translator: 'gemini'
-        source_lang: 'en'
-        incremental: true
+  # 1. A default set of options automatically applied to all tasks.
+  .defaults:
+    translator: 'gemini'
+    source_lang: 'en'
+    incremental: true
 
-    # 2. A reusable ruleset for protecting variables.
-    .script_rules:
-        rules:
-            protect:
-                - '\$\w+' # Protects $VAR
+  # 2. A reusable ruleset for protecting variables.
+  .script_rules:
+    rules:
+      protect:
+        - '\$\w+' # Protects $VAR
 
-    # 3. A shortcut for shell scripts that inherits from .defaults.
-    .scripts:
-        extends: '.defaults'
-        source:
-            include: ['**/*.sh', '**/*.ps1']
+  # 3. A shortcut for shell scripts that inherits from .defaults.
+  .scripts:
+    extends: '.defaults'
+    source:
+      include: ['**/*.sh', '**/*.ps1']
 ```
 
 ### 3. `tasks`
 
 This is the core section where you define the list of translation jobs. Each item in the list is a task object.
 
-#### Common Task Keys:
+#### Common Task Keys
 
--   `name`: A descriptive name for the task.
--   `enabled`: Set to `true` or `false` to enable or disable the task.
--   `extends`: Inherit settings from a defined shortcut (e.g., `extends: .scripts`). This can also be used inside a `rules` block to inherit from a ruleset.
--   `target_lang`: The language to translate to (e.g., `"zh-TW"`, `"ja"`).
--   `source`: Specifies which files to include or exclude.
-    -   `include`: A list of glob patterns for files to process.
-    -   `exclude`: A list of glob patterns for files to ignore.
--   `extraction_rules`: A list of regular expressions used to extract translatable strings from files that are not structured (like shell scripts or markdown). The first capture group (`(...)`) should contain the text to be translated.
--   `task_id`: (Optional) A unique identifier for this task. If not provided, GlocalText will automatically generate a stable UUID based on the task's key configuration (source language, target language, source files, and extraction rules). This ensures that cache files remain consistent even if you rename the task. You can also manually specify a custom `task_id` to have full control over cache file naming.
--   `incremental`: Set to `true` to enable caching, which allows GlocalText to skip re-translating content that hasn't changed since the last run. Defaults to `false`.
--   `cache_path`: (Optional) Specifies a custom directory path (relative to the project root) for storing translation cache files. If not specified, defaults to `.ogos/glocaltext/caches/`. The cache file for each task will be automatically named based on the task's UUID (`task_id`), ensuring stability across task renames (e.g., `<task_id>.json`). **Note:** This is a directory path, not a file path. For example, setting `cache_path: "my_cache"` will create cache files at `<project_root>/my_cache/<task_id>.json`.
--   `output`: Defines how and where to write the translated files.
-    -   `in_place`: If `true`, overwrites the source files. Defaults to `false`.
-    -   `path`: (Required when `in_place` is `false`) The directory path (relative to the project root) where translated files will be saved. **Important:** This is a directory path, not a file path. For example, `path: "output/ja"` will create translated files in `<project_root>/output/ja/`. Even if you specify `path: ".cache.json"`, GlocalText will create a directory named `.cache.json` and place files inside it.
-    -   `filename`: A pattern for the output filename. Supports placeholders:
-        -   `{stem}`: The original filename without the extension.
-        -   `{source_lang}`: The source language code.
-        -   `{target_lang}`: The target language code.
-        -   `{extension}`: The original file extension without the dot.
--   `prompts`: (For AI-based translators like Gemini) Custom prompts to guide the translation. Supports template variables for dynamic content.
+- `name`: A descriptive name for the task.
+- `enabled`: Set to `true` or `false` to enable or disable the task.
+- `extends`: Inherit settings from a defined shortcut (e.g., `extends: .scripts`). This can also be used inside a `rules` block to inherit from a ruleset.
+- `target_lang`: The language to translate to (e.g., `"zh-TW"`, `"ja"`).
+- `source`: Specifies which files to include or exclude.
+  - `include`: A list of glob patterns for files to process.
+  - `exclude`: A list of glob patterns for files to ignore.
+- `extraction_rules`: A list of regular expressions used to extract translatable strings from files that are not structured (like shell scripts or markdown). The first capture group (`(...)`) should contain the text to be translated.
+- `task_id`: (Optional) A unique identifier for this task. If not provided, GlocalText will automatically generate a stable UUID based on the task's key configuration (source language, target language, source files, and extraction rules). This ensures that cache files remain consistent even if you rename the task. You can also manually specify a custom `task_id` to have full control over cache file naming.
+- `incremental`: Set to `true` to enable caching, which allows GlocalText to skip re-translating content that hasn't changed since the last run. Defaults to `false`.
+- `cache_path`: (Optional) Specifies a custom directory path (relative to the project root) for storing translation cache files. If not specified, defaults to `.ogos/glocaltext/caches/`. The cache file for each task will be automatically named based on the task's UUID (`task_id`), ensuring stability across task renames (e.g., `<task_id>.json`). **Note:** This is a directory path, not a file path. For example, setting `cache_path: "my_cache"` will create cache files at `<project_root>/my_cache/<task_id>.json`.
+- `output`: Defines how and where to write the translated files.
+  - `in_place`: If `true`, overwrites the source files. Defaults to `false`.
+  - `path`: (Required when `in_place` is `false`) The directory path (relative to the project root) where translated files will be saved. **Important:** This is a directory path, not a file path. For example, `path: "output/ja"` will create translated files in `<project_root>/output/ja/`. Even if you specify `path: ".cache.json"`, GlocalText will create a directory named `.cache.json` and place files inside it.
+  - `filename`: A pattern for the output filename. Supports placeholders:
+    - `{stem}`: The original filename without the extension.
+    - `{source_lang}`: The source language code.
+    - `{target_lang}`: The target language code.
+    - `{extension}`: The original file extension without the dot.
+- `prompts`: (For AI-based translators like Gemini) Custom prompts to guide the translation. Supports template variables for dynamic content.
 
-    -   `user`: A custom user prompt template. Supports the following variables:
-        -   `{source_lang}`: The source language code
-        -   `{target_lang}`: The target language code
-        -   `{texts_json_array}`: The JSON array of texts to translate (automatically injected)
-    -   **Example**:
+  - `user`: A custom user prompt template. Supports the following variables:
+    - `{source_lang}`: The source language code
+    - `{target_lang}`: The target language code
+    - `{texts_json_array}`: The JSON array of texts to translate (automatically injected)
+  - **Example**:
 
-        ```yaml
-        prompts:
-            user: |
-                You are a professional technical translator specializing in software documentation.
-                Translate the following texts from {source_lang} to {target_lang}.
-                Maintain technical accuracy and use appropriate terminology.
+    ```yaml
+    prompts:
+      user: |
+        You are a professional technical translator specializing in software documentation.
+        Translate the following texts from {source_lang} to {target_lang}.
+        Maintain technical accuracy and use appropriate terminology.
 
-                Texts to translate:
-                {texts_json_array}
-        ```
+        Texts to translate:
+        {texts_json_array}
+    ```
 
 #### Default Prompts for AI Translators
 
@@ -247,76 +247,68 @@ GlocalText provides default prompts for AI-based translators. You can override t
 
 **Gemini Default Prompt:**
 
-```
+```markdown
 You are a professional translation engine. Your task is to translate a list of texts from {source_lang} to {target_lang}.
 
-You MUST return a JSON object with a single key "translations" that contains a list of the translated strings.
-The list of translated strings must have the same number of items as the input list.
-If a translation is not possible, return the original text for that item. Do not add explanations.
+You MUST return a JSON object with a single key "translations" that contains a list of the translated strings. The list of translated strings must have the same number of items as the input list. If a translation is not possible, return the original text for that item. Do not add explanations.
 
-Translate the following texts:
-{texts_json_array}
+Translate the following texts: {texts_json_array}
 ```
 
 **Gemma Default Prompt:**
 
-```
-<start_of_turn>user
-You are a professional translation engine. Your task is to translate a list of texts from {source_lang} to {target_lang}.
+```markdown
+<start_of_turn>user You are a professional translation engine. Your task is to translate a list of texts from {source_lang} to {target_lang}.
 
-You MUST return a JSON object with a single key "translations" that contains a list of the translated strings.
-The list of translated strings must have the same number of items as the input list.
-If a translation is not possible, return the original text for that item. Do not add explanations.
+You MUST return a JSON object with a single key "translations" that contains a list of the translated strings. The list of translated strings must have the same number of items as the input list. If a translation is not possible, return the original text for that item. Do not add explanations.
 
-Translate the following texts:
-{texts_json_array}<end_of_turn>
-<start_of_turn>model
+Translate the following texts: {texts_json_array}<end_of_turn> <start_of_turn>model
 ```
 
 **Note**: The prompts support the following template variables:
 
--   `{source_lang}`: The source language code
--   `{target_lang}`: The target language code
--   `{texts_json_array}`: The JSON array of texts to translate (automatically injected)
+- `{source_lang}`: The source language code
+- `{target_lang}`: The target language code
+- `{texts_json_array}`: The JSON array of texts to translate (automatically injected)
 
 #### The `rules` Dictionary
 
 The `rules` key allows for fine-grained control over the translation of extracted strings. It is a dictionary containing `protect`, `skip`, and `replace` rules. Rules from shortcuts are deep-merged with task-specific rules.
 
--   `protect`: A list of regex patterns. Any text matching these patterns (e.g., variables like `$VAR` or `${VAR}`) will be protected from being sent to the translator.
--   `skip`: A list of regex patterns. If an entire string matches one of these patterns, it will be skipped and not translated.
--   `replace`: A dictionary of regex patterns to replacement strings. This action supports capture groups and backreferences (e.g., `\1`, `\2`), making it ideal for complex text manipulation or providing authoritative translations for specific patterns.
+- `protect`: A list of regex patterns. Any text matching these patterns (e.g., variables like `$VAR` or `${VAR}`) will be protected from being sent to the translator.
+- `skip`: A list of regex patterns. If an entire string matches one of these patterns, it will be skipped and not translated.
+- `replace`: A dictionary of regex patterns to replacement strings. This action supports capture groups and backreferences (e.g., `\1`, `\2`), making it ideal for complex text manipulation or providing authoritative translations for specific patterns.
 
-        **Example**: To automatically format a user tag before translation, you can add a `replace` rule. The example below finds "User: " followed by any characters, captures those characters, and replaces the string with a formatted Chinese version while keeping the original user identifier.
+**Example**: To automatically format a user tag before translation, you can add a `replace` rule. The example below finds "User: " followed by any characters, captures those characters, and replaces the string with a formatted Chinese version while keeping the original user identifier.
 
-        ```yaml
-        # In a task within the config file:
-        rules:
-            replace:
-                # Replaces 'User: <name>' with '使用者: <name>' before translation.
-                # The \1 is a backreference to the first capture group (.*).
-                # Note the use of single quotes to avoid issues with YAML escape sequences.
-                'User: (.*)': '使用者: \1'
-        ```
+```yaml
+# In a task within the config file:
+rules:
+  replace:
+    # Replaces 'User: <name>' with '使用者: <name>' before translation.
+    # The \1 is a backreference to the first capture group (.*).
+    # Note the use of single quotes to avoid issues with YAML escape sequences.
+    'User: (.*)': '使用者: \1'
+```
 
-        **Inheriting Rulesets**: You can also inherit a complete set of rules from a shortcut. This is useful for applying a standard set of rules (like protecting variables) across multiple tasks.
+**Inheriting Rulesets**: You can also inherit a complete set of rules from a shortcut. This is useful for applying a standard set of rules (like protecting variables) across multiple tasks.
 
-        ```yaml
-        shortcuts:
-            .script_rules:
-                rules:
-                    protect:
-                        - '\$\w+' # Protects $VAR
+```yaml
+shortcuts:
+  .script_rules:
+    rules:
+      protect:
+        - '\$\w+' # Protects $VAR
 
-        tasks:
-            - name: 'Translate Scripts'
-              extends: '.defaults'
-              # ... other task settings
-              rules:
-                  extends: '.script_rules' # Inherit all rules from .script_rules
-                  skip:
-                      - 'Do not translate this line' # Add a task-specific rule
-        ```
+tasks:
+  - name: 'Translate Scripts'
+    extends: '.defaults'
+    # ... other task settings
+    rules:
+      extends: '.script_rules' # Inherit all rules from .script_rules
+      skip:
+        - 'Do not translate this line' # Add a task-specific rule
+```
 
 ### Comprehensive Task Example
 
@@ -333,47 +325,47 @@ File: `.ogos/glocaltext/configs/main.yaml`
 #  1. Provider Settings
 # ------------------------------------------------------------------------------
 providers:
-    gemini:
-        api_key: 'YOUR_GEMINI_API_KEY'
-        model: 'gemini-1.5-flash-latest'
+  gemini:
+    api_key: 'YOUR_GEMINI_API_KEY'
+    model: 'gemini-1.5-flash-latest'
 
 # ------------------------------------------------------------------------------
 #  2. Shortcuts: For reusable configuration
 # ------------------------------------------------------------------------------
 shortcuts:
-    .defaults:
-        translator: 'gemini'
-        source_lang: 'en'
-        incremental: true
+  .defaults:
+    translator: 'gemini'
+    source_lang: 'en'
+    incremental: true
 
 # ------------------------------------------------------------------------------
 #  3. Tasks: The core translation jobs
 # ------------------------------------------------------------------------------
 tasks:
-    - name: 'Translate Markdown Docs to Japanese'
-      enabled: true
-      extends: '.defaults' # Inherit from the defaults shortcut
-      target_lang: 'ja'
-      source:
-          include: ['docs/**/*.md']
-          exclude: ['docs/internal/**']
-      extraction_rules:
-          # Extract text from within backticks
-          - '`([^`]+)`'
-      rules:
-          protect:
-              # Protect code blocks and variables
-              - '`[^`]+`'
-              - '\w+\.\w+'
-          skip:
-              # Don't translate version numbers
-              - '^v\d+\.\d+\.\d+$'
-      output:
-          in_place: false
-          path: 'output/ja' # Place translated files in output/ja/
-          filename: '{stem}.{target_lang}.md' # e.g., my_doc.ja.md
-      prompts:
-          system: 'You are a professional translator specializing in technical documentation for a software project. Translate with a formal and clear tone.'
+  - name: 'Translate Markdown Docs to Japanese'
+    enabled: true
+    extends: '.defaults' # Inherit from the defaults shortcut
+    target_lang: 'ja'
+    source:
+      include: ['docs/**/*.md']
+      exclude: ['docs/internal/**']
+    extraction_rules:
+      # Extract text from within backticks
+      - '`([^`]+)`'
+    rules:
+      protect:
+        # Protect code blocks and variables
+        - '`[^`]+`'
+        - '\w+\.\w+'
+      skip:
+        # Don't translate version numbers
+        - '^v\d+\.\d+\.\d+$'
+    output:
+      in_place: false
+      path: 'output/ja' # Place translated files in output/ja/
+      filename: '{stem}.{target_lang}.md' # e.g., my_doc.ja.md
+    prompts:
+      system: 'You are a professional translator specializing in technical documentation for a software project. Translate with a formal and clear tone.'
 ```
 
 ## Usage
@@ -395,33 +387,34 @@ GlocalText will:
 
 ### Command-Line Options
 
--   `--debug`: Enables debug level logging for troubleshooting.
+- `--debug`: Enables debug level logging for troubleshooting.
 
-    ```bash
-    glocaltext --debug
-    ```
+  ```bash
+  glocaltext --debug
+  ```
 
--   `--incremental`: Overrides all task-level settings to run in incremental mode, translating only new or modified content. This saves time and API costs by skipping previously translated content.
+- `--incremental`: Overrides all task-level settings to run in incremental mode, translating only new or modified content. This saves time and API costs by skipping previously translated content.
 
-    ```bash
-    glocaltext --incremental
-    ```
+  ```bash
+  glocaltext --incremental
+  ```
 
--   `--dry-run`: Performs a full run without making any actual changes or API calls. This is extremely useful for:
+- `--dry-run`: Performs a full run without making any actual changes or API calls. This is extremely useful for:
 
-    -   Testing your configuration
-    -   Previewing what text will be translated
-    -   Verifying file paths and glob patterns
-    -   Checking rules without consuming API quota
+  - Testing your configuration
+  - Previewing what text will be translated
+  - Verifying file paths and glob patterns
+  - Checking rules without consuming API quota
 
-    ```bash
-    glocaltext --dry-run
-    ```
+  ```bash
+  glocaltext --dry-run
+  ```
 
--   `-v`, `--version`: Show the version number and exit.
-    ```bash
-    glocaltext --version
-    ```
+- `-v`, `--version`: Show the version number and exit.
+
+  ```bash
+  glocaltext --version
+  ```
 
 ### Combining Options
 
@@ -441,35 +434,35 @@ glocaltext --incremental --debug
 
 ```yaml
 providers:
-    gemini:
-        api_key: 'YOUR_API_KEY'
-        model: 'gemini-1.5-flash-latest'
+  gemini:
+    api_key: 'YOUR_API_KEY'
+    model: 'gemini-1.5-flash-latest'
 
 shortcuts:
-    .defaults:
-        translator: 'gemini'
-        source_lang: 'en'
-        incremental: true
-        source:
-            include: ['docs/**/*.md']
-            exclude: ['docs/internal/**', '**/node_modules/**']
+  .defaults:
+    translator: 'gemini'
+    source_lang: 'en'
+    incremental: true
+    source:
+      include: ['docs/**/*.md']
+      exclude: ['docs/internal/**', '**/node_modules/**']
 
 tasks:
-    - name: 'Translate docs to Japanese'
-      enabled: true
-      extends: '.defaults'
-      target_lang: 'ja'
-      output:
-          in_place: false
-          path: 'docs/ja'
+  - name: 'Translate docs to Japanese'
+    enabled: true
+    extends: '.defaults'
+    target_lang: 'ja'
+    output:
+      in_place: false
+      path: 'docs/ja'
 
-    - name: 'Translate docs to Traditional Chinese'
-      enabled: true
-      extends: '.defaults'
-      target_lang: 'zh-TW'
-      output:
-          in_place: false
-          path: 'docs/zh-tw'
+  - name: 'Translate docs to Traditional Chinese'
+    enabled: true
+    extends: '.defaults'
+    target_lang: 'zh-TW'
+    output:
+      in_place: false
+      path: 'docs/zh-tw'
 ```
 
 ### Example 2: Translating Shell Scripts with Variable Protection
@@ -519,58 +512,58 @@ tasks:
 
 ```yaml
 providers:
-    gemini:
-        api_key: 'YOUR_API_KEY'
+  gemini:
+    api_key: 'YOUR_API_KEY'
 
 tasks:
-    - name: 'Update README to Chinese'
-      enabled: true
-      translator: 'gemini'
-      source_lang: 'en'
-      target_lang: 'zh-TW'
-      source:
-          include: ['README.md']
-      output:
-          in_place: true # Overwrites the original file
-      prompts:
-          user: |
-              You are translating a README file for a technical project.
-              Use formal technical terminology appropriate for {target_lang}.
-              Keep code examples, URLs, and command-line syntax unchanged.
+  - name: 'Update README to Chinese'
+    enabled: true
+    translator: 'gemini'
+    source_lang: 'en'
+    target_lang: 'zh-TW'
+    source:
+      include: ['README.md']
+    output:
+      in_place: true # Overwrites the original file
+    prompts:
+      user: |
+        You are translating a README file for a technical project.
+        Use formal technical terminology appropriate for {target_lang}.
+        Keep code examples, URLs, and command-line syntax unchanged.
 
-              Translate these texts from {source_lang} to {target_lang}:
-              {texts_json_array}
+        Translate these texts from {source_lang} to {target_lang}:
+        {texts_json_array}
 ```
 
 ### Example 4: Using Replace Rules for Authoritative Translations
 
 ```yaml
 providers:
-    gemini:
-        api_key: 'YOUR_API_KEY'
+  gemini:
+    api_key: 'YOUR_API_KEY'
 
 tasks:
-    - name: 'Translate with Fixed Terms'
-      enabled: true
-      translator: 'gemini'
-      source_lang: 'en'
-      target_lang: 'zh-TW'
-      source:
-          include: ['content/**/*.md']
-      rules:
-          replace:
-              # Replace specific terms before translation
-              'User: (.*)': '使用者: \1'
-              'Admin: (.*)': '管理員: \1'
-              'Error: (.*)': '錯誤: \1'
-          protect:
-              # Protect brand names and technical terms
-              - 'GlocalText'
-              - 'GitHub'
-              - 'API'
-      output:
-          in_place: false
-          path: 'content/zh-tw'
+  - name: 'Translate with Fixed Terms'
+    enabled: true
+    translator: 'gemini'
+    source_lang: 'en'
+    target_lang: 'zh-TW'
+    source:
+      include: ['content/**/*.md']
+    rules:
+      replace:
+        # Replace specific terms before translation
+        'User: (.*)': '使用者: \1'
+        'Admin: (.*)': '管理員: \1'
+        'Error: (.*)': '錯誤: \1'
+      protect:
+        # Protect brand names and technical terms
+        - 'GlocalText'
+        - 'GitHub'
+        - 'API'
+    output:
+      in_place: false
+      path: 'content/zh-tw'
 ```
 
 ## Troubleshooting
@@ -599,11 +592,13 @@ mkdir -p .ogos/glocaltext/configs
 **Solution**:
 
 1. Add your API key to the configuration file:
-    ```yaml
-    providers:
-        gemini:
-            api_key: 'YOUR_ACTUAL_API_KEY_HERE'
-    ```
+
+   ```yaml
+   providers:
+     gemini:
+       api_key: 'YOUR_ACTUAL_API_KEY_HERE'
+   ```
+
 2. Never commit API keys to version control. Consider using environment variables or a `.env` file (excluded from git)
 
 #### Issue: "No files matched the source patterns"
@@ -614,11 +609,13 @@ mkdir -p .ogos/glocaltext/configs
 
 1. Use `--dry-run` to verify which files are being matched
 2. Check your glob patterns are correct:
-    ```yaml
-    source:
-        include: ['**/*.md'] # Matches all .md files recursively
-        exclude: ['node_modules/**'] # Exclude node_modules
-    ```
+
+   ```yaml
+   source:
+     include: ['**/*.md'] # Matches all .md files recursively
+     exclude: ['node_modules/**'] # Exclude node_modules
+   ```
+
 3. Ensure paths are relative to the project root
 
 #### Issue: "Rate limit exceeded"
@@ -628,11 +625,13 @@ mkdir -p .ogos/glocaltext/configs
 **Solution**:
 
 1. Reduce the `batch_size` in your provider settings:
-    ```yaml
-    providers:
-        gemini:
-            batch_size: 10 # Lower value = slower but safer
-    ```
+
+   ```yaml
+   providers:
+     gemini:
+       batch_size: 10 # Lower value = slower but safer
+   ```
+
 2. Adjust `rpm` (requests per minute) and `tpm` (tokens per minute) limits
 3. Use `--incremental` to translate only new content
 
@@ -643,14 +642,16 @@ mkdir -p .ogos/glocaltext/configs
 **Solution**:
 
 1. Customize the `prompts.user` field with specific instructions:
-    ```yaml
-    prompts:
-        user: |
-            You are a technical translator specializing in [YOUR DOMAIN].
-            Maintain consistency with these terms: [LIST KEY TERMS].
-            Translate from {source_lang} to {target_lang}:
-            {texts_json_array}
-    ```
+
+   ```yaml
+   prompts:
+     user: |
+       You are a technical translator specializing in [YOUR DOMAIN].
+       Maintain consistency with these terms: [LIST KEY TERMS].
+       Translate from {source_lang} to {target_lang}:
+       {texts_json_array}
+   ```
+
 2. Use `protect` rules to preserve technical terms
 3. Use `replace` rules for authoritative translations of specific phrases
 
@@ -672,13 +673,13 @@ mkdir -p .ogos/glocaltext/configs
 
 ```yaml
 tasks:
-    - name: 'Translate docs with Gemini'
-      translator: 'gemini'
-      # ... task config
+  - name: 'Translate docs with Gemini'
+    translator: 'gemini'
+    # ... task config
 
-    - name: 'Translate UI with Google Translate'
-      translator: 'google'
-      # ... task config
+  - name: 'Translate UI with Google Translate'
+    translator: 'google'
+    # ... task config
 ```
 
 ### Q: How does incremental translation work?
@@ -696,17 +697,17 @@ This dramatically reduces API costs and translation time for large projects.
 
 **A**:
 
--   **`protect`**: Prevents specific patterns **within** a text from being translated, but the rest of the text is still translated. Example: Protecting `$VAR` in "Please set $VAR before running" → "請在運行前設置 $VAR"
--   **`skip`**: Prevents the **entire** text from being translated if it matches the pattern. Example: Skipping version numbers like "v1.2.3" entirely.
+- **`protect`**: Prevents specific patterns **within** a text from being translated, but the rest of the text is still translated. Example: Protecting `$VAR` in "Please set $VAR before running" → "請在運行前設置 $VAR"
+- **`skip`**: Prevents the **entire** text from being translated if it matches the pattern. Example: Skipping version numbers like "v1.2.3" entirely.
 
 ### Q: Can I translate binary files or databases?
 
 **A**: No, GlocalText is designed for text-based files only. It works best with:
 
--   Markdown (`.md`)
--   Code files with extractable strings (`.js`, `.py`, `.sh`, etc.)
--   Configuration files (`.yaml`, `.json`, `.xml`)
--   Plain text files
+- Markdown (`.md`)
+- Code files with extractable strings (`.js`, `.py`, `.sh`, etc.)
+- Configuration files (`.yaml`, `.json`, `.xml`)
+- Plain text files
 
 ### Q: How do I handle file encodings?
 
@@ -732,8 +733,8 @@ This shows you exactly what will be translated without making any changes or con
 
 ```yaml
 extraction_rules:
-    - '(?:^|\s)#\s+(.+)$' # Only comments in shell scripts
-    - '"([^"]+)"' # Only quoted strings
+  - '(?:^|\s)#\s+(.+)$' # Only comments in shell scripts
+  - '"([^"]+)"' # Only quoted strings
 ```
 
 The first capture group `(...)` defines what will be translated.
@@ -751,7 +752,7 @@ This makes it safe to interrupt and restart translations.
 ## Contributors
 
 <a href="https://github.com/OG-Open-Source/GlocalText/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=OG-Open-Source/GlocalText" />
+  <img src="https://contrib.rocks/image?repo=OG-Open-Source/GlocalText" alt="Contributor list and icons for the OG-Open-Source/GlocalText project" />
 </a>
 
 ## Contributing

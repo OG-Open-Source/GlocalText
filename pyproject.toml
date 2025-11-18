@@ -1,85 +1,81 @@
 [project]
-name = "GlocalText"
-version = "4.0.0b4"
-description = "A config-driven script to batch translate files using various providers."
-readme = "README.md"
-requires-python = ">=3.10,<4.0"
-license = { file = "LICENSE" }
-authors = [{ name = "OG-Open-Source" }]
-classifiers = [
-  "License :: OSI Approved :: MIT License",
-  "Natural Language :: English",
-  "Programming Language :: Python",
-  "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
-  "Programming Language :: Python :: 3.13",
-  "Programming Language :: Python :: 3.14",
-  "Programming Language :: Python :: Implementation :: CPython",
-  "Topic :: Software Development :: Localization",
-]
-dependencies = [
-  "google-genai>=1.49.0,<2.0.0",
-  "google-api-core>=2.0.0,<3.0.0",
-  "deep-translator>=1.11.4,<2.0.0",
-  "regex>=2025.11.3,<2026.0.0",
-  "pydantic>=2.12.4,<3.0.0",
-  "tenacity>=9.1.2,<10.0.0",
-  "ruamel-yaml>=0.18.16,<0.19.0",
-  "pyyaml>=6.0.0,<7.0.0",
-]
+  authors = [{ name = "OG-Open-Source" }]
+  classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python",
+    "Topic :: Software Development :: Localization",
+  ]
+  dependencies = [
+    "deep-translator>=1.11.4,<2.0.0",
+    "google-api-core>=2.0.0,<3.0.0",
+    "google-genai>=1.49.0,<2.0.0",
+    "pydantic>=2.12.4,<3.0.0",
+    "pyyaml>=6.0.0,<7.0.0",
+    "regex>=2025.11.3,<2026.0.0",
+    "ruamel-yaml>=0.18.16,<0.19.0",
+    "tenacity>=9.1.2,<10.0.0",
+  ]
+  description = "A config-driven script to batch translate files using various providers."
+  license = { file = "LICENSE" }
+  name = "GlocalText"
+  readme = "README.md"
+  requires-python = ">=3.10,<4.0"
+  version = "4.0.0rc1"
 
 [dependency-groups]
-dev = [
-    "pyclean>=3.4.0,<4.0.0",
-]
-test = [
+  dev = ["pyclean>=3.4.0,<4.0.0"]
+  lint = ["ruff>=0.14.4,<0.15.0"]
+  test = [
     "pyfakefs>=5.10.2",
-    "pytest>=9.0.0,<10.0.0",
     "pytest-cov>=7.0.0,<8.0.0",
-]
-lint = [
-    "ruff>=0.14.4,<0.15.0",
-]
-type-check = [
-  "mypy>=1.18.2,<2.0.0",
-  "pyright>=1.1.407,<2.0.0",
-  "types-pyyaml>=6.0.12.20250915",
-  "types-regex>=2025.11.3.20251106",
-]
+    "pytest>=9.0.0,<10.0.0",
+  ]
+  type-check = [
+    "mypy>=1.18.2,<2.0.0",
+    "pyright>=1.1.407,<2.0.0",
+    "types-pyyaml>=6.0.12.20250915",
+    "types-regex>=2025.11.3.20251106",
+  ]
 
-[project.scripts]
-glocaltext = "glocaltext.__main__:main"
+  [project.scripts]
+    glocaltext = "glocaltext.__main__:main"
 
-[project.urls]
-homepage = "https://github.com/OG-Open-Source/GlocalText"
-repository = "https://github.com/OG-Open-Source/GlocalText"
+  [project.urls]
+    homepage   = "https://github.com/OG-Open-Source/GlocalText"
+    repository = "https://github.com/OG-Open-Source/GlocalText"
 
 [build-system]
-requires = ["uv_build>=0.9.8,<0.10.0"]
-build-backend = "uv_build"
+  build-backend = "uv_build"
+  requires      = ["uv_build>=0.9.8,<0.10.0"]
 
 
 [tool.ruff]
-line-length = 320
+  line-length = 320
 
-[tool.ruff.lint]
-select = ["ALL"]
-ignore = ["D203", "D212", "COM812", "PERF203"]
+  [tool.ruff.format]
+    indent-style = "space"
+    line-ending  = "lf"
+    quote-style  = "double"
 
-[tool.ruff.lint.per-file-ignores]
-"tests/*.py" = ["S101", "PLR2004", "PT011", "RUF001", "RUF002", "RUF003"]
-"src/glocaltext/coverage.py" = ["RUF001", "RUF002", "RUF003"]
-"debug_replace_rules.py" = ["T201"]
+  [tool.ruff.lint]
+    ignore = ["COM812", "D203", "D212"]
+    select = ["ALL"]
 
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "space"
-line-ending = "lf"
+    [tool.ruff.lint.per-file-ignores]
+      "debug_replace_rules.py"     = ["T201"]
+      "src/glocaltext/coverage.py" = ["RUF001", "RUF002", "RUF003"]
+      "tests/*.py"                 = ["PLR2004", "PT011", "RUF001", "RUF002", "RUF003", "S101"]
 
 [tool.pytest.ini_options]
-pythonpath = [".", "src"]
-markers = [
-  "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
-]
+  markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+  ]
+  pythonpath = [".", "src"]

@@ -290,7 +290,7 @@ wheels = [
 
 [[package]]
 name = "glocaltext"
-version = "4.0.0b4"
+version = "4.0.0rc1"
 source = { editable = "." }
 dependencies = [
     { name = "deep-translator" },

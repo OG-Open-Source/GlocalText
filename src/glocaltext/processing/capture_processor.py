@@ -3,6 +3,7 @@
 import logging
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
 import regex
 
@@ -75,35 +76,44 @@ def _extract_matches_from_content(content: str, file_path: Path, task: Translati
     matches: list[TextMatch] = []
     # Ensure extraction_rules is treated as a list even if it's None
     extraction_rules = task.extraction_rules or []
-    for rule_pattern in extraction_rules:
+
+    # Validate and compile patterns before loop
+    def compile_pattern(pattern: str) -> tuple[str, Any] | None:
         try:
-            found_matches = []
-            for match in regex.finditer(rule_pattern, content, regex.MULTILINE, overlapped=True):
-                if match.groups():
-                    # Create coverage tracker initialized with the original text
-                    coverage = TextCoverage(content)
-                    # Add the range covered by this match
-                    coverage.add_range(match.start(1), match.end(1))
-
-                    # Create TextMatch with coverage
-                    text_match = TextMatch(
-                        original_text=match.group(1),
-                        source_file=file_path,
-                        span=match.span(1),
-                        task_name=task.name,
-                        extraction_rule=rule_pattern,
-                        coverage=coverage,
-                    )
-                    found_matches.append(text_match)
-
-            matches.extend(found_matches)
+            return (pattern, regex.compile(pattern, regex.MULTILINE))
         except regex.error as e:
             logger.warning(
                 "Skipping invalid regex pattern '%s' in task '%s': %s",
-                rule_pattern,
+                pattern,
                 task.name,
                 e,
             )
+            return None
+
+    compiled_patterns = [p for p in (compile_pattern(rule) for rule in extraction_rules) if p is not None]
+
+    # Process with validated patterns
+    for rule_pattern, compiled in compiled_patterns:
+        found_matches = []
+        for match in compiled.finditer(content, overlapped=True):
+            if match.groups():
+                # Create coverage tracker initialized with the original text
+                coverage = TextCoverage(content)
+                # Add the range covered by this match
+                coverage.add_range(match.start(1), match.end(1))
+
+                # Create TextMatch with coverage
+                text_match = TextMatch(
+                    original_text=match.group(1),
+                    source_file=file_path,
+                    span=match.span(1),
+                    task_name=task.name,
+                    extraction_rule=rule_pattern,
+                    coverage=coverage,
+                )
+                found_matches.append(text_match)
+
+        matches.extend(found_matches)
     return matches
 
 
@@ -122,12 +132,15 @@ class CaptureProcessor(Processor):
             for file_path in context.files_to_process:
                 try:
                     content = file_path.read_text("utf-8")
-                    file_matches = _extract_matches_from_content(content, file_path, context.task)
-                    context.all_matches.extend(file_matches)
                 except OSError:
                     logger.exception("Could not read file %s", file_path)
+                    continue
                 except Exception:
                     logger.exception("An unexpected error occurred while processing %s", file_path)
+                    continue
+
+                file_matches = _extract_matches_from_content(content, file_path, context.task)
+                context.all_matches.extend(file_matches)
 
             logger.info("Task '%s': Captured %d total text matches.", context.task.name, len(context.all_matches))
         except FileNotFoundError:
