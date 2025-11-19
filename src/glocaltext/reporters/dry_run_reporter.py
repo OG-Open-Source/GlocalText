@@ -106,7 +106,6 @@ class DryRunReporter:
             return f"### {title} (0 items)\n\nNo matches in this category.\n\n"
 
         header = f"### {title} ({len(matches)} items)\n\n"
-        # Group by file for better readability
         matches_by_file = defaultdict(list)
         for match in matches:
             matches_by_file[match.source_file].append(match)
@@ -117,25 +116,31 @@ class DryRunReporter:
             content += "| Original Text | Details |\n"
             content += "|---|---|\n"
             for match in file_matches:
-                details = f"Lifecycle: `{match.lifecycle.value}`"
-                if match.skip_reason:
-                    details += f"<br>Skip Reason: `{match.skip_reason.code}`"
-                if match.translated_text:
-                    details += f"<br>Translation: `{match.translated_text}`"
-
-                # Replace rules modify processed_text, not original_text.
-                # original_text is kept immutable for cache consistency.
-                # We display processed_text in reports to show the actual text
-                # that will be sent for translation.
-                if match.processed_text and match.processed_text != match.original_text:
-                    # Show before → after comparison for replaced text
-                    content += f"| `{self._escape_markdown(match.original_text)}` → `{self._escape_markdown(match.processed_text)}` | {details} |\n"
-                else:
-                    # Show original text only if not replaced
-                    display_text = match.processed_text if match.processed_text else match.original_text
-                    content += f"| `{self._escape_markdown(display_text)}` | {details} |\n"
+                content += self._format_match_row(match)
             content += "\n"
         return header + content
+
+    def _format_match_row(self, match: TextMatch) -> str:
+        """Format a single match as a table row."""
+        details = self._build_match_details(match)
+        text_display = self._build_text_display(match)
+        return f"| {text_display} | {details} |\n"
+
+    def _build_match_details(self, match: TextMatch) -> str:
+        """Build the details column for a match."""
+        details = f"Lifecycle: `{match.lifecycle.value}`"
+        if match.skip_reason:
+            details += f"<br>Skip Reason: `{match.skip_reason.code}`"
+        if match.translated_text:
+            details += f"<br>Translation: `{match.translated_text}`"
+        return details
+
+    def _build_text_display(self, match: TextMatch) -> str:
+        """Build the text display column for a match."""
+        if match.processed_text and match.processed_text != match.original_text:
+            return f"`{self._escape_markdown(match.original_text)}` → `{self._escape_markdown(match.processed_text)}`"
+        display_text = match.processed_text if match.processed_text else match.original_text
+        return f"`{self._escape_markdown(display_text)}`"
 
     def _build_batch_plan(self, context: ExecutionContext) -> str:
         """Build the simulated batch processing plan section."""
