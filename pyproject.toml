@@ -49,7 +49,7 @@
     glocaltext = "glocaltext.__main__:main"
 
   [project.urls]
-    homepage   = "https://github.com/OG-Open-Source/GlocalText"
+    homepage   = "https://glocaltext.ogtt.tk/"
     repository = "https://github.com/OG-Open-Source/GlocalText"
 
 [build-system]
