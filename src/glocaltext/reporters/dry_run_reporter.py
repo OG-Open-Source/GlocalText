@@ -23,7 +23,7 @@ class DryRunReporter:
         """
         report_path = None
         try:
-            report_dir = paths.get_report_dir()
+            report_dir = paths.get_report_dir(context.project_root)
             paths.ensure_dir_exists(report_dir)
             report_path = report_dir / f"{context.task.name}_dry_run.md"
             logger.info("Generating dry-run report at: %s", report_path)

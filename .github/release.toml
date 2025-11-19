@@ -1,0 +1,25 @@
+# .github/release.toml
+
+[workflow]
+  manual_approval = true
+
+[validate]
+  steps = ["validate-python.sh"]
+
+[build]
+  final_validation_step = "validate-python.sh"
+  steps                 = ["build-python.sh"]
+
+[assets]
+  exclude          = []
+  include          = ["*"]
+  source_directory = "dist/"
+
+[changelog]
+  template = """
+### What's Changed in ${REPO_NAME} ${TAG}
+
+${COMMITS}
+
+**Full Changelog**: ${URL}
+"""

@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1.0" />
+		<title>Documentation - GlocalText</title>
+		<link
+			rel="stylesheet"
+			href="assets/styles.css" />
+		<link
+			rel="preconnect"
+			href="https://fonts.googleapis.com" />
+		<link
+			rel="preconnect"
+			href="https://fonts.gstatic.com"
+			crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fira+Code&display=swap"
+			rel="stylesheet" />
+	</head>
+	<body>
+		<header>
+			<div class="container">
+				<a
+					href="index.html"
+					class="logo">
+					GlocalText <span>Docs</span>
+				</a>
+				<button class="mobile-menu-btn">☰</button>
+				<nav class="nav-links">
+					<a
+						href="index.html"
+						class="nav-link"
+						>Home</a
+					>
+					<a
+						href="docs.html"
+						class="nav-link active"
+						>Docs</a
+					>
+					<a
+						href="https://github.com/OG-Open-Source/GlocalText"
+						class="nav-link"
+						>GitHub</a
+					>
+					<a
+						href="https://pypi.org/project/GlocalText/"
+						class="nav-link"
+						>PyPI</a
+					>
+					<button
+						id="theme-toggle"
+						class="theme-toggle"
+						aria-label="Toggle theme">
+						☀️
+					</button>
+				</nav>
+			</div>
+		</header>
+
+		<div class="docs-layout">
+			<aside class="docs-sidebar">
+				<div class="search-box">
+					<input
+						type="text"
+						id="docs-search"
+						class="search-input"
+						placeholder="Search docs..." />
+					<div
+						id="search-results"
+						class="search-results"></div>
+				</div>
+				<nav class="sidebar-nav">
+					<h4>Getting Started</h4>
+					<a
+						href="#installation"
+						class="sidebar-link"
+						>Installation</a
+					>
+					<a
+						href="#quick-start"
+						class="sidebar-link"
+						>Quick Start</a
+					>
+
+					<h4>CLI Reference</h4>
+					<a
+						href="#cli-init"
+						class="sidebar-link"
+						>glocaltext init</a
+					>
+					<a
+						href="#cli-run"
+						class="sidebar-link"
+						>glocaltext run</a
+					>
+					<a
+						href="#cli-flags"
+						class="sidebar-link"
+						>Flags & Options</a
+					>
+
+					<h4>Configuration</h4>
+					<a
+						href="#config-providers"
+						class="sidebar-link"
+						>Providers</a
+					>
+					<a
+						href="#config-tasks"
+						class="sidebar-link"
+						>Tasks</a
+					>
+					<a
+						href="#config-rules"
+						class="sidebar-link"
+						>Rules (Firewall)</a
+					>
+				</nav>
+			</aside>
+
+			<main class="docs-content">
+				<section
+					id="installation"
+					class="doc-section">
+					<h2>Installation</h2>
+					<p>Install GlocalText using pip. Requires Python 3.10+.</p>
+					<pre><code>pip install glocaltext</code></pre>
+				</section>
+
+				<section
+					id="quick-start"
+					class="doc-section">
+					<h2>Quick Start</h2>
+					<p>Get up and running in seconds.</p>
+					<ol>
+						<li>
+							<p>Initialize your project:</p>
+							<pre><code>glocaltext init .</code></pre>
+						</li>
+						<li>
+							<p>Edit the generated config file at <code>.ogos/glocaltext/configs/main.yaml</code>.</p>
+						</li>
+						<li>
+							<p>Run the translation:</p>
+							<pre><code>glocaltext run .</code></pre>
+						</li>
+					</ol>
+				</section>
+
+				<section
+					id="cli-init"
+					class="doc-section">
+					<h2>glocaltext init</h2>
+					<p>Initializes a new GlocalText project in the specified directory.</p>
+					<pre><code>glocaltext init [PATH]</code></pre>
+					<ul>
+						<li>Creates the <code>.ogos</code> directory structure.</li>
+						<li>Generates a default <code>main.yaml</code> configuration file.</li>
+					</ul>
+				</section>
+
+				<section
+					id="cli-run"
+					class="doc-section">
+					<h2>glocaltext run</h2>
+					<p>Executes the translation tasks defined in your configuration.</p>
+					<pre><code>glocaltext run [PATH]</code></pre>
+					<ul>
+						<li><code>[PATH]</code>: The root directory of your project (containing <code>.ogos</code>).</li>
+					</ul>
+				</section>
+
+				<section
+					id="cli-flags"
+					class="doc-section">
+					<h2>Flags & Options</h2>
+					<p>Common flags you can use with <code>glocaltext run</code>:</p>
+					<ul>
+						<li><code>--dry-run</code>: Simulate the process without making changes or calling APIs.</li>
+						<li><code>--incremental</code>: Only translate new or modified files (overrides config).</li>
+						<li><code>--debug</code>: Enable verbose logging for troubleshooting.</li>
+						<li><code>--version</code>: Show the installed version.</li>
+					</ul>
+				</section>
+
+				<section
+					id="config-providers"
+					class="doc-section">
+					<h2>Providers</h2>
+					<p>Configure your AI translation providers in <code>main.yaml</code>.</p>
+					<pre><code>providers:
+  gemini:
+    api_key: 'YOUR_KEY'
+    model: 'gemini-2.5-flash-lite'
+    rpm: 60
+  google: {}  # Uses Google Translate (no key required)</code></pre>
+				</section>
+
+				<section
+					id="config-tasks"
+					class="doc-section">
+					<h2>Tasks</h2>
+					<p>Define what to translate. Each task specifies source files, target language, and output location.</p>
+					<pre><code>tasks:
+  - name: 'Translate Docs'
+    target_lang: 'ja'
+    source:
+      include: ['docs/**/*.md']
+    output:
+      path: 'docs/ja'</code></pre>
+				</section>
+
+				<section
+					id="config-rules"
+					class="doc-section">
+					<h2>Rules (Firewall)</h2>
+					<p>The core of GlocalText. Use regex to control exactly what gets translated.</p>
+					<ul>
+						<li><strong>Protect</strong>: Prevent specific patterns (like variables) from being translated.</li>
+						<li><strong>Skip</strong>: Skip entire lines or blocks.</li>
+						<li><strong>Replace</strong>: Pre-process text before translation.</li>
+					</ul>
+					<pre><code>rules:
+  protect:
+    - '\$VAR'       # Protect $VAR
+    - '`[^`]+`'     # Protect code in backticks
+  replace:
+    'User: (.*)': '使用者: \1'</code></pre>
+				</section>
+			</main>
+		</div>
+
+		<footer class="extended-footer">
+			<div class="container">
+				<div class="footer-grid">
+					<div class="footer-brand">
+						<h3>GlocalText</h3>
+						<p>Empowering developers to build better software faster with AI-powered localization tools.</p>
+					</div>
+					<div class="footer-col">
+						<h4>Project</h4>
+						<ul>
+							<li><a href="https://github.com/OG-Open-Source/GlocalText">GitHub</a></li>
+							<li><a href="https://pypi.org/project/GlocalText/">PyPI</a></li>
+							<li><a href="https://github.com/OG-Open-Source/GlocalText/issues">Issues</a></li>
+							<li><a href="https://github.com/OG-Open-Source/GlocalText/releases">Releases</a></li>
+						</ul>
+					</div>
+					<div class="footer-col">
+						<h4>Resources</h4>
+						<ul>
+							<li><a href="docs.html">Documentation</a></li>
+							<li><a href="https://github.com/OG-Open-Source/GlocalText/blob/main/LICENSE">License</a></li>
+						</ul>
+					</div>
+					<div class="footer-col">
+						<h4>Community</h4>
+						<ul>
+							<li><a href="https://github.com/OG-Open-Source">OG-Open-Source</a></li>
+							<li><a href="https://github.com/OG-Open-Source/GlocalText/blob/main/README.md#contributors">Contributing</a></li>
+						</ul>
+					</div>
+				</div>
+			</div>
+		</footer>
+
+		<div class="floating-copyright">
+			<span>&copy; 2025</span>
+			<a href="https://github.com/OG-Open-Source">OG-Open-Source</a>
+		</div>
+
+		<script src="assets/script.js"></script>
+	</body>
+</html>

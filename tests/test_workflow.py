@@ -2,6 +2,7 @@
 
 import unittest
 from importlib.metadata import PackageNotFoundError
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from pyfakefs.fake_filesystem_unittest import TestCase  # type: ignore[import-not-found]
@@ -44,7 +45,7 @@ class TestWorkflow(TestCase):
             extraction_rules=[r"`([^`\n]+)`"],
             output=Output(in_place=False, path="/project/output/fr"),
         )
-        run_task(mock_task, mock_config, dry_run=False, debug=False)
+        run_task(mock_task, mock_config, Path.cwd(), dry_run=False, debug=False)
         mock_reporter_generate.assert_called_once()
 
     @patch("importlib.metadata.version")

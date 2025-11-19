@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1.0" />
+		<title>GlocalText - Automate Your Localization</title>
+		<meta
+			name="description"
+			content="A powerful, config-driven tool to batch translate your files using AI." />
+		<link
+			rel="stylesheet"
+			href="assets/styles.css" />
+		<link
+			rel="preconnect"
+			href="https://fonts.googleapis.com" />
+		<link
+			rel="preconnect"
+			href="https://fonts.gstatic.com"
+			crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fira+Code&display=swap"
+			rel="stylesheet" />
+	</head>
+	<body>
+		<header>
+			<div class="container">
+				<a
+					href="index.html"
+					class="logo">
+					GlocalText
+				</a>
+				<button class="mobile-menu-btn">☰</button>
+				<nav class="nav-links">
+					<a
+						href="index.html"
+						class="nav-link active"
+						>Home</a
+					>
+					<a
+						href="docs.html"
+						class="nav-link"
+						>Docs</a
+					>
+					<a
+						href="https://github.com/OG-Open-Source/GlocalText"
+						class="nav-link"
+						>GitHub</a
+					>
+					<a
+						href="https://pypi.org/project/GlocalText/"
+						class="nav-link"
+						>PyPI</a
+					>
+					<button
+						id="theme-toggle"
+						class="theme-toggle"
+						aria-label="Toggle theme">
+						☀️
+					</button>
+				</nav>
+			</div>
+		</header>
+
+		<main>
+			<section class="hero">
+				<div class="container">
+					<h1>Automate Your <span class="gradient-text">Localization</span></h1>
+					<p>A config-driven, firewall-style translation engine. Batch translate files using Gemini, Google Translate, and more with precise control.</p>
+
+					<div class="btn-group">
+						<a
+							href="docs.html"
+							class="btn btn-primary"
+							>Get Started</a
+						>
+						<a
+							href="https://github.com/OG-Open-Source/GlocalText"
+							class="btn btn-secondary"
+							>View Source</a
+						>
+					</div>
+
+					<div class="code-window">
+						<div class="window-header">
+							<span class="dot red"></span>
+							<span class="dot yellow"></span>
+							<span class="dot green"></span>
+							<span class="window-title">Terminal</span>
+						</div>
+						<div class="code-content">
+							<span class="code-line"><span class="comment"># 1. Initialize project</span></span>
+							<span class="code-line"><span class="prompt">$</span> <span class="cmd">glocaltext</span> init .</span>
+							<br />
+							<span class="code-line"><span class="comment"># 2. Run translations</span></span>
+							<span class="code-line"><span class="prompt">$</span> <span class="cmd">glocaltext</span> run .</span>
+						</div>
+					</div>
+				</div>
+			</section>
+
+			<section class="section">
+				<div class="container">
+					<h2 class="section-title">Why GlocalText?</h2>
+					<div class="grid">
+						<div class="card">
+							<div class="card-icon">🤖</div>
+							<h3>AI-Powered</h3>
+							<p>Leverage Gemini and other LLMs for context-aware, high-quality translations.</p>
+						</div>
+						<div class="card">
+							<div class="card-icon">🛡️</div>
+							<h3>Regex Firewall</h3>
+							<p>Protect variables and code blocks using a powerful regex-based rules engine.</p>
+						</div>
+						<div class="card">
+							<div class="card-icon">⚡</div>
+							<h3>Incremental Builds</h3>
+							<p>Smart caching ensures you only translate what has changed, saving time and tokens.</p>
+						</div>
+						<div class="card">
+							<div class="card-icon">⚙️</div>
+							<h3>Config-Driven</h3>
+							<p>Define everything in a simple YAML file. Reusable shortcuts keep it DRY.</p>
+						</div>
+					</div>
+				</div>
+			</section>
+		</main>
+
+		<footer class="extended-footer">
+			<div class="container">
+				<div class="footer-grid">
+					<div class="footer-brand">
+						<h3>GlocalText</h3>
+						<p>Empowering developers to build better software faster with AI-powered localization tools.</p>
+					</div>
+					<div class="footer-col">
+						<h4>Project</h4>
+						<ul>
+							<li><a href="https://github.com/OG-Open-Source/GlocalText">GitHub</a></li>
+							<li><a href="https://pypi.org/project/GlocalText/">PyPI</a></li>
+							<li><a href="https://github.com/OG-Open-Source/GlocalText/issues">Issues</a></li>
+							<li><a href="https://github.com/OG-Open-Source/GlocalText/releases">Releases</a></li>
+						</ul>
+					</div>
+					<div class="footer-col">
+						<h4>Resources</h4>
+						<ul>
+							<li><a href="docs.html">Documentation</a></li>
+							<li><a href="https://github.com/OG-Open-Source/GlocalText/blob/main/LICENSE">License</a></li>
+						</ul>
+					</div>
+					<div class="footer-col">
+						<h4>Community</h4>
+						<ul>
+							<li><a href="https://github.com/OG-Open-Source">OG-Open-Source</a></li>
+							<li><a href="https://github.com/OG-Open-Source/GlocalText/blob/main/README.md#contributors">Contributing</a></li>
+						</ul>
+					</div>
+				</div>
+			</div>
+		</footer>
+
+		<div class="floating-copyright">
+			<span>&copy; 2025</span>
+			<a href="https://github.com/OG-Open-Source">OG-Open-Source</a>
+		</div>
+
+		<script src="assets/script.js"></script>
+	</body>
+</html>

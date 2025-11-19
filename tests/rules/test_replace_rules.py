@@ -294,6 +294,7 @@ class TestReplaceRulesTranslationInput(unittest.TestCase):
         context = ExecutionContext(
             task=task,
             config=self.config,
+            project_root=Path.cwd(),
             is_dry_run=False,
             is_incremental=False,
             is_debug=False,

@@ -77,7 +77,7 @@ pip install GlocalText
 To verify the installation, check the version:
 
 ```bash
-glocaltext --version
+glocaltext run . --version
 # Output: glocaltext 4.0.0b2
 ```
 
@@ -91,8 +91,8 @@ Here's the fastest way to get started with GlocalText:
 # Navigate to your project root
 cd your-project
 
-# Create the required directory structure
-mkdir -p .ogos/glocaltext/configs
+# Initialize GlocalText (creates .ogos directory and default config)
+glocaltext init .
 ```
 
 ### 2. Create a Minimal Configuration
@@ -125,10 +125,10 @@ tasks:
 
 ```bash
 # From anywhere inside your project directory
-glocaltext
+glocaltext run .
 
 # Or use dry-run mode to preview what will be translated
-glocaltext --dry-run
+glocaltext run . --dry-run
 ```
 
 That's it! GlocalText will translate all Markdown files in your project to Japanese and save them in the `translated/ja` directory.
@@ -375,7 +375,7 @@ To run `GlocalText`, simply execute the command from anywhere inside your projec
 ### Basic Command
 
 ```bash
-glocaltext
+glocaltext run .
 ```
 
 GlocalText will:
@@ -390,13 +390,13 @@ GlocalText will:
 - `--debug`: Enables debug level logging for troubleshooting.
 
   ```bash
-  glocaltext --debug
+  glocaltext run . --debug
   ```
 
 - `--incremental`: Overrides all task-level settings to run in incremental mode, translating only new or modified content. This saves time and API costs by skipping previously translated content.
 
   ```bash
-  glocaltext --incremental
+  glocaltext run . --incremental
   ```
 
 - `--dry-run`: Performs a full run without making any actual changes or API calls. This is extremely useful for:
@@ -407,13 +407,13 @@ GlocalText will:
   - Checking rules without consuming API quota
 
   ```bash
-  glocaltext --dry-run
+  glocaltext run . --dry-run
   ```
 
 - `-v`, `--version`: Show the version number and exit.
 
   ```bash
-  glocaltext --version
+  glocaltext run . --version
   ```
 
 ### Combining Options
@@ -422,10 +422,10 @@ You can combine multiple options for more control:
 
 ```bash
 # Dry run with debug logging
-glocaltext --dry-run --debug
+glocaltext run . --dry-run --debug
 
 # Incremental translation with debug logging
-glocaltext --incremental --debug
+glocaltext run . --incremental --debug
 ```
 
 ## Examples
@@ -722,7 +722,7 @@ This dramatically reduces API costs and translation time for large projects.
 **A**: Yes! Use the `--dry-run` flag:
 
 ```bash
-glocaltext --dry-run
+glocaltext run . --dry-run
 ```
 
 This shows you exactly what will be translated without making any changes or consuming API quota.

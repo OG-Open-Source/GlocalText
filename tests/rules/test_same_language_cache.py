@@ -36,7 +36,7 @@ class TestSameLanguageCacheBug(unittest.TestCase):
             incremental=True,
             task_id="test-same-lang-id",
         )
-        self.context = ExecutionContext(task=self.mock_task, config=self.mock_config)
+        self.context = ExecutionContext(task=self.mock_task, config=self.mock_config, project_root=Path.cwd())
 
     @patch("glocaltext.paths.find_project_root")
     @patch("glocaltext.processing.cache_processors._load_cache")

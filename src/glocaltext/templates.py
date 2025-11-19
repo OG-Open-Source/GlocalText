@@ -1,11 +1,11 @@
-# ==============================================================================
+"""Default configuration templates for GlocalText."""
+
+DEFAULT_CONFIG_YAML = r"""# ==============================================================================
 # GlocalText Configuration File
 #
 # This file is the control center for all translation tasks.
 # It is structured into several key sections that define reusable components,
 # providers, and the specific tasks to be executed.
-#
-# Run with: glocaltext run .
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
@@ -92,9 +92,8 @@ tasks:
       skip:
         - ^Don't translate me$
       replace:
-        'User: (.*)': '使用者: \1'
+        'User: (.*)': '使用者: \\1'
 
-    task_id: 2cd1915d-b7a4-5e8e-9a01-3b177d5c5c8a
   - name: Translate Markdown Docs to Japanese
     extends: .defaults # Inherit only the base settings
     target_lang: ja
@@ -115,4 +114,4 @@ tasks:
       # Prompts can be used to add context for the AI translator.
     prompts:
       system: You are a professional translator specializing in technical documentation.
-    task_id: d50bfc24-582b-5292-bb27-6b57e5cfbaf0
+"""

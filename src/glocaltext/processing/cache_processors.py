@@ -31,7 +31,7 @@ class CacheProcessor(Processor):
             return
 
         try:
-            cache_path = _get_task_cache_path(context.task)
+            cache_path = _get_task_cache_path(context.task, context.project_root)
             paths.ensure_dir_exists(cache_path.parent)
             cache = _load_cache(cache_path, context.task.task_id)
         except FileNotFoundError:
@@ -73,7 +73,7 @@ class CacheUpdateProcessor(Processor):
             return
 
         try:
-            cache_path = _get_task_cache_path(context.task)
+            cache_path = _get_task_cache_path(context.task, context.project_root)
 
             # Load existing cache to verify checksums
             try:

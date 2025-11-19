@@ -24,6 +24,7 @@ class ExecutionContext:
 
     task: TranslationTask
     config: GlocalConfig
+    project_root: Path
     is_dry_run: bool = False
     is_incremental: bool = False
     is_debug: bool = False

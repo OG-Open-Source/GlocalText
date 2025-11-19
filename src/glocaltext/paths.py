@@ -10,17 +10,20 @@ OGOS_SUBDIR: Final[Path] = Path(".ogos") / "glocaltext"
 
 
 @lru_cache(maxsize=1)
-def find_project_root() -> Path:
+def find_project_root(start_path: Path | None = None) -> Path:
     """
-    Find the project root by searching upwards from the CWD for the '.ogos' anchor.
+    Find the project root by searching upwards from the start_path (or CWD) for the '.ogos' anchor.
 
     The directory containing the '.ogos' directory is considered the project root.
+
+    Args:
+        start_path: The path to start searching from. Defaults to CWD.
 
     Raises:
         FileNotFoundError: If the anchor config file is not found in any parent directory.
 
     """
-    current_dir = Path.cwd().resolve()
+    current_dir = (start_path or Path.cwd()).resolve()
     for parent in [current_dir, *current_dir.parents]:
         config_dir = parent / OGOS_SUBDIR / "configs"
         if config_dir.is_dir():
@@ -32,9 +35,9 @@ def find_project_root() -> Path:
     raise FileNotFoundError(msg)
 
 
-def get_config_file_path() -> Path:
+def get_config_file_path(root_path: Path | None = None) -> Path:
     """Find and return the full path to the main.yaml or main.yml config file."""
-    root = find_project_root()
+    root = find_project_root(root_path)
     config_dir = root / OGOS_SUBDIR / "configs"
     for config_file in CONFIG_FILE_NAMES:
         path = config_dir / config_file
@@ -45,19 +48,19 @@ def get_config_file_path() -> Path:
     raise FileNotFoundError(msg)
 
 
-def get_log_dir() -> Path:
+def get_log_dir(root_path: Path | None = None) -> Path:
     """Return the path to the log directory."""
-    return find_project_root() / OGOS_SUBDIR / "logs"
+    return find_project_root(root_path) / OGOS_SUBDIR / "logs"
 
 
-def get_report_dir() -> Path:
+def get_report_dir(root_path: Path | None = None) -> Path:
     """Return the path to the report directory."""
-    return find_project_root() / OGOS_SUBDIR / "reports"
+    return find_project_root(root_path) / OGOS_SUBDIR / "reports"
 
 
-def get_cache_dir() -> Path:
+def get_cache_dir(root_path: Path | None = None) -> Path:
     """Return the path to the cache directory."""
-    return find_project_root() / OGOS_SUBDIR / "caches"
+    return find_project_root(root_path) / OGOS_SUBDIR / "caches"
 
 
 def ensure_dir_exists(path: Path) -> None:

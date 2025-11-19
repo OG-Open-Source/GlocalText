@@ -29,7 +29,7 @@ class TestDryRunReporter(unittest.TestCase):
 
     def _create_mock_context(self) -> ExecutionContext:
         """Create a default mock ExecutionContext."""
-        context = ExecutionContext(task=self.task, config=self.config)
+        context = ExecutionContext(task=self.task, config=self.config, project_root=Path.cwd())
         context.files_to_process = [Path("file1.txt"), Path("file2.txt")]
         context.all_matches = [
             TextMatch(
@@ -199,7 +199,7 @@ class TestSummaryReporter(unittest.TestCase):
     @patch("logging.Logger.info")
     def test_generate_summary_logs_output(self, mock_log_info: MagicMock) -> None:
         """1. Logging: Generates a summary and logs it via the logger."""
-        context = ExecutionContext(task=self.task, config=self.config)
+        context = ExecutionContext(task=self.task, config=self.config, project_root=Path.cwd())
         # Phase 4: Updated test data to use lifecycle states
         # A rule match must have processed_text != original_text to be counted as replaced
         rule_match = TextMatch("A", Path("f.txt"), (0, 1), "test", "test")
@@ -237,7 +237,7 @@ class TestSummaryReporter(unittest.TestCase):
     @patch("logging.Logger.info")
     def test_generate_summary_no_tokens(self, mock_log_info: MagicMock) -> None:
         """2. Logging: Does not log token usage if zero tokens were used."""
-        context = ExecutionContext(task=self.task, config=self.config)
+        context = ExecutionContext(task=self.task, config=self.config, project_root=Path.cwd())
         translated_match = TextMatch("D", Path("f.txt"), (0, 1), "test", "test")
         translated_match.lifecycle = MatchLifecycle.TRANSLATED
         translated_match.translated_text = "d"

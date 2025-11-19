@@ -1,6 +1,7 @@
 """Manages the overall GlocalText translation workflow."""
 
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .config import GlocalConfig, TranslationTask
@@ -24,7 +25,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def run_task(task: TranslationTask, config: GlocalConfig, *, dry_run: bool = False, debug: bool = False) -> list[TextMatch]:
+def run_task(
+    task: TranslationTask,
+    config: GlocalConfig,
+    project_root: Path,
+    *,
+    dry_run: bool = False,
+    debug: bool = False,
+) -> list[TextMatch]:
     """
     Run a single translation task by orchestrating a multi-phase processor pipeline.
 
@@ -37,6 +45,7 @@ def run_task(task: TranslationTask, config: GlocalConfig, *, dry_run: bool = Fal
     Args:
         task: The translation task to execute.
         config: The global application configuration.
+        project_root: The root path of the project.
         dry_run: If True, skips API calls and file modifications.
         debug: If True, enables debug logging and behaviors.
 
@@ -47,6 +56,7 @@ def run_task(task: TranslationTask, config: GlocalConfig, *, dry_run: bool = Fal
     context = ExecutionContext(
         task=task,
         config=config,
+        project_root=project_root,
         is_incremental=task.incremental,
         is_dry_run=dry_run,
         is_debug=debug,

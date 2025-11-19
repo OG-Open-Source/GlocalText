@@ -16,16 +16,17 @@ from glocaltext.types import Source, TranslationTask
 class TestParseArgs(unittest.TestCase):
     """Test suite for CLI argument parsing."""
 
-    @patch("sys.argv", ["glocaltext"])
+    @patch("sys.argv", ["glocaltext", "run", "."])
     def test_parse_args_no_arguments(self) -> None:
         """1. Default Args: Parses with no arguments, all flags False."""
         args = _parse_args()
         assert isinstance(args, Namespace)
+        assert args.command == "run"
         assert args.incremental is False
         assert args.debug is False
         assert args.dry_run is False
 
-    @patch("sys.argv", ["glocaltext", "--incremental"])
+    @patch("sys.argv", ["glocaltext", "run", ".", "--incremental"])
     def test_parse_args_incremental_flag(self) -> None:
         """2. Incremental Flag: Correctly parses --incremental."""
         args = _parse_args()
@@ -33,15 +34,15 @@ class TestParseArgs(unittest.TestCase):
         assert args.debug is False
         assert args.dry_run is False
 
-    @patch("sys.argv", ["glocaltext", "--debug"])
+    @patch("sys.argv", ["glocaltext", "run", ".", "--debug"])
     def test_parse_args_debug_flag(self) -> None:
         """3. Debug Flag: Correctly parses --debug."""
         args = _parse_args()
         assert args.debug is True
-        assert args.incremental is False
-        assert args.dry_run is False
+        assert getattr(args, "incremental", False) is False
+        assert getattr(args, "dry_run", False) is False
 
-    @patch("sys.argv", ["glocaltext", "--dry-run"])
+    @patch("sys.argv", ["glocaltext", "run", ".", "--dry-run"])
     def test_parse_args_dry_run_flag(self) -> None:
         """4. Dry Run Flag: Correctly parses --dry-run."""
         args = _parse_args()
@@ -49,7 +50,7 @@ class TestParseArgs(unittest.TestCase):
         assert args.incremental is False
         assert args.debug is False
 
-    @patch("sys.argv", ["glocaltext", "--incremental", "--debug", "--dry-run"])
+    @patch("sys.argv", ["glocaltext", "run", ".", "--incremental", "--debug", "--dry-run"])
     def test_parse_args_all_flags_combined(self) -> None:
         """5. Combined Flags: Correctly parses multiple flags together."""
         args = _parse_args()
@@ -78,10 +79,10 @@ class TestLoadConfig(unittest.TestCase):
         mock_load_config.return_value = mock_config
 
         with self.assertLogs("glocaltext.__main__", level="INFO") as cm:
-            result = _load_config()
+            result = _load_config(Path.cwd())
 
         assert result is mock_config
-        mock_get_path.assert_called_once()
+        mock_get_path.assert_called_once_with(Path.cwd())
         mock_load_config.assert_called_once_with(str(mock_config_path))
         assert any("Loading configuration from:" in log for log in cm.output)
 
@@ -93,7 +94,7 @@ class TestLoadConfig(unittest.TestCase):
         mock_load_config.side_effect = FileNotFoundError("Config file not found")
 
         with self.assertLogs("glocaltext.__main__", level="ERROR") as cm:
-            result = _load_config()
+            result = _load_config(Path.cwd())
 
         assert result is None
         assert any("Could not find a valid configuration file" in log for log in cm.output)
@@ -106,7 +107,7 @@ class TestLoadConfig(unittest.TestCase):
         mock_load_config.side_effect = ValueError("Invalid YAML structure")
 
         with self.assertLogs("glocaltext.__main__", level="ERROR") as cm:
-            result = _load_config()
+            result = _load_config(Path.cwd())
 
         assert result is None
         assert any("An unexpected error occurred while loading the configuration" in log for log in cm.output)
@@ -117,7 +118,7 @@ class TestLoadConfig(unittest.TestCase):
         mock_get_path.side_effect = FileNotFoundError("Cannot find project root")
 
         with self.assertLogs("glocaltext.__main__", level="ERROR") as cm:
-            result = _load_config()
+            result = _load_config(Path.cwd())
 
         assert result is None
         assert any("Could not find a valid configuration file" in log for log in cm.output)
@@ -152,9 +153,9 @@ class TestRunTasks(unittest.TestCase):
         self.mock_config.tasks = [self.enabled_task, self.disabled_task]
 
         with self.assertLogs("glocaltext.__main__", level="INFO") as cm:
-            _run_tasks(self.mock_config, incremental=False, dry_run=False, debug=False)
+            _run_tasks(self.mock_config, Path.cwd(), incremental=False, dry_run=False, debug=False)
 
-        mock_run_task.assert_called_once_with(self.enabled_task, self.mock_config, dry_run=False, debug=False)
+        mock_run_task.assert_called_once_with(self.enabled_task, self.mock_config, Path.cwd(), dry_run=False, debug=False)
         assert any("Running Task: 'enabled_task'" in log for log in cm.output)
         assert not any("disabled_task" in log for log in cm.output)
 
@@ -163,7 +164,7 @@ class TestRunTasks(unittest.TestCase):
         """2. Disabled Tasks: Skips tasks where enabled=False."""
         self.mock_config.tasks = [self.disabled_task]
 
-        _run_tasks(self.mock_config, incremental=False, dry_run=False, debug=False)
+        _run_tasks(self.mock_config, Path.cwd(), incremental=False, dry_run=False, debug=False)
 
         mock_run_task.assert_not_called()
 
@@ -173,7 +174,7 @@ class TestRunTasks(unittest.TestCase):
         self.enabled_task.incremental = False
         self.mock_config.tasks = [self.enabled_task]
 
-        _run_tasks(self.mock_config, incremental=True, dry_run=False, debug=False)
+        _run_tasks(self.mock_config, Path.cwd(), incremental=True, dry_run=False, debug=False)
 
         assert self.enabled_task.incremental is True
         mock_run_task.assert_called_once()
@@ -184,7 +185,7 @@ class TestRunTasks(unittest.TestCase):
         self.enabled_task.incremental = True
         self.mock_config.tasks = [self.enabled_task]
 
-        _run_tasks(self.mock_config, incremental=False, dry_run=False, debug=False)
+        _run_tasks(self.mock_config, Path.cwd(), incremental=False, dry_run=False, debug=False)
 
         assert self.enabled_task.incremental is True
         mock_run_task.assert_called_once()
@@ -194,9 +195,9 @@ class TestRunTasks(unittest.TestCase):
         """5. Dry Run Mode: Correctly passes dry_run flag to run_task."""
         self.mock_config.tasks = [self.enabled_task]
 
-        _run_tasks(self.mock_config, incremental=False, dry_run=True, debug=False)
+        _run_tasks(self.mock_config, Path.cwd(), incremental=False, dry_run=True, debug=False)
 
-        mock_run_task.assert_called_once_with(self.enabled_task, self.mock_config, dry_run=True, debug=False)
+        mock_run_task.assert_called_once_with(self.enabled_task, self.mock_config, Path.cwd(), dry_run=True, debug=False)
 
     @patch("glocaltext.__main__.run_task")
     def test_run_tasks_passes_debug_flag(self, mock_run_task: MagicMock) -> None:
@@ -204,9 +205,9 @@ class TestRunTasks(unittest.TestCase):
         self.mock_config.tasks = [self.enabled_task]
 
         with self.assertLogs("glocaltext.__main__", level="DEBUG") as cm:
-            _run_tasks(self.mock_config, incremental=False, dry_run=False, debug=True)
+            _run_tasks(self.mock_config, Path.cwd(), incremental=False, dry_run=False, debug=True)
 
-        mock_run_task.assert_called_once_with(self.enabled_task, self.mock_config, dry_run=False, debug=True)
+        mock_run_task.assert_called_once_with(self.enabled_task, self.mock_config, Path.cwd(), dry_run=False, debug=True)
         assert any("Starting task 'enabled_task' with config:" in log for log in cm.output)
 
     @patch("glocaltext.__main__.run_task")
@@ -214,7 +215,7 @@ class TestRunTasks(unittest.TestCase):
         """7. Empty Tasks: Handles empty task list gracefully."""
         self.mock_config.tasks = []
 
-        _run_tasks(self.mock_config, incremental=False, dry_run=False, debug=False)
+        _run_tasks(self.mock_config, Path.cwd(), incremental=False, dry_run=False, debug=False)
 
         mock_run_task.assert_not_called()
 
@@ -239,13 +240,13 @@ class TestRunTasks(unittest.TestCase):
         )
         self.mock_config.tasks = [task1, task2]
 
-        _run_tasks(self.mock_config, incremental=False, dry_run=False, debug=False)
+        _run_tasks(self.mock_config, Path.cwd(), incremental=False, dry_run=False, debug=False)
 
         assert mock_run_task.call_count == 2
         mock_run_task.assert_has_calls(
             [
-                call(task1, self.mock_config, dry_run=False, debug=False),
-                call(task2, self.mock_config, dry_run=False, debug=False),
+                call(task1, self.mock_config, Path.cwd(), dry_run=False, debug=False),
+                call(task2, self.mock_config, Path.cwd(), dry_run=False, debug=False),
             ]
         )
 
@@ -265,7 +266,7 @@ class TestMainFunction(unittest.TestCase):
         mock_run_tasks: MagicMock,
     ) -> None:
         """1. Success: Full successful execution of main workflow."""
-        mock_args = Namespace(incremental=False, debug=False, dry_run=False)
+        mock_args = Namespace(command="run", path=".", incremental=False, debug=False, dry_run=False)
         mock_parse_args.return_value = mock_args
         mock_config = GlocalConfig(providers={"mock": ProviderSettings()})
         mock_load_config.return_value = mock_config
@@ -274,9 +275,9 @@ class TestMainFunction(unittest.TestCase):
             main()
 
         mock_parse_args.assert_called_once()
-        mock_setup_logging.assert_called_once_with(version=__version__, debug=False)
-        mock_load_config.assert_called_once()
-        mock_run_tasks.assert_called_once_with(mock_config, incremental=False, dry_run=False, debug=False)
+        mock_setup_logging.assert_called_once_with(version=__version__, debug=False, project_root=Path.cwd())
+        assert mock_load_config.call_count == 1
+        mock_run_tasks.assert_called_once_with(mock_config, Path.cwd(), incremental=False, dry_run=False, debug=False)
         assert any("All tasks completed" in log for log in cm.output)
 
     @patch("glocaltext.__main__._run_tasks")
@@ -293,7 +294,7 @@ class TestMainFunction(unittest.TestCase):
         mock_run_tasks: MagicMock,
     ) -> None:
         """2. Config Failure: Exits with code 1 when config loading fails."""
-        mock_args = Namespace(incremental=False, debug=False, dry_run=False)
+        mock_args = Namespace(command="run", path=".", incremental=False, debug=False, dry_run=False)
         mock_parse_args.return_value = mock_args
         mock_load_config.return_value = None
 
@@ -316,7 +317,7 @@ class TestMainFunction(unittest.TestCase):
         mock_run_tasks: MagicMock,
     ) -> None:
         """3. Unexpected Error: Catches and logs unexpected exceptions, exits with code 1."""
-        mock_args = Namespace(incremental=False, debug=False, dry_run=False)
+        mock_args = Namespace(command="run", path=".", incremental=False, debug=False, dry_run=False)
         mock_parse_args.return_value = mock_args
         mock_config = GlocalConfig(providers={"mock": ProviderSettings()})
         mock_load_config.return_value = mock_config
@@ -341,15 +342,15 @@ class TestMainFunction(unittest.TestCase):
         mock_run_tasks: MagicMock,
     ) -> None:
         """4. Debug Mode: Correctly passes debug flag through the workflow."""
-        mock_args = Namespace(incremental=False, debug=True, dry_run=False)
+        mock_args = Namespace(command="run", path=".", incremental=False, debug=True, dry_run=False)
         mock_parse_args.return_value = mock_args
         mock_config = GlocalConfig(providers={"mock": ProviderSettings()})
         mock_load_config.return_value = mock_config
 
         main()
 
-        mock_setup_logging.assert_called_once_with(version=__version__, debug=True)
-        mock_run_tasks.assert_called_once_with(mock_config, incremental=False, dry_run=False, debug=True)
+        mock_setup_logging.assert_called_once_with(version=__version__, debug=True, project_root=Path.cwd())
+        mock_run_tasks.assert_called_once_with(mock_config, Path.cwd(), incremental=False, dry_run=False, debug=True)
 
     @patch("glocaltext.__main__._run_tasks")
     @patch("glocaltext.__main__._load_config")
@@ -361,14 +362,14 @@ class TestMainFunction(unittest.TestCase):
         mock_run_tasks: MagicMock,
     ) -> None:
         """5. Incremental Mode: Correctly passes incremental flag to _run_tasks."""
-        mock_args = Namespace(incremental=True, debug=False, dry_run=False)
+        mock_args = Namespace(command="run", path=".", incremental=True, debug=False, dry_run=False)
         mock_parse_args.return_value = mock_args
         mock_config = GlocalConfig(providers={"mock": ProviderSettings()})
         mock_load_config.return_value = mock_config
 
         main()
 
-        mock_run_tasks.assert_called_once_with(mock_config, incremental=True, dry_run=False, debug=False)
+        mock_run_tasks.assert_called_once_with(mock_config, Path.cwd(), incremental=True, dry_run=False, debug=False)
 
     @patch("glocaltext.__main__._run_tasks")
     @patch("glocaltext.__main__._load_config")
@@ -380,14 +381,14 @@ class TestMainFunction(unittest.TestCase):
         mock_run_tasks: MagicMock,
     ) -> None:
         """6. Dry Run Mode: Correctly passes dry_run flag to _run_tasks."""
-        mock_args = Namespace(incremental=False, debug=False, dry_run=True)
+        mock_args = Namespace(command="run", path=".", incremental=False, debug=False, dry_run=True)
         mock_parse_args.return_value = mock_args
         mock_config = GlocalConfig(providers={"mock": ProviderSettings()})
         mock_load_config.return_value = mock_config
 
         main()
 
-        mock_run_tasks.assert_called_once_with(mock_config, incremental=False, dry_run=True, debug=False)
+        mock_run_tasks.assert_called_once_with(mock_config, Path.cwd(), incremental=False, dry_run=True, debug=False)
 
     @patch("glocaltext.__main__._run_tasks")
     @patch("glocaltext.__main__._load_config")
@@ -401,15 +402,15 @@ class TestMainFunction(unittest.TestCase):
         mock_run_tasks: MagicMock,
     ) -> None:
         """7. All Flags: Correctly handles all flags enabled simultaneously."""
-        mock_args = Namespace(incremental=True, debug=True, dry_run=True)
+        mock_args = Namespace(command="run", path=".", incremental=True, debug=True, dry_run=True)
         mock_parse_args.return_value = mock_args
         mock_config = GlocalConfig(providers={"mock": ProviderSettings()})
         mock_load_config.return_value = mock_config
 
         main()
 
-        mock_setup_logging.assert_called_once_with(version=__version__, debug=True)
-        mock_run_tasks.assert_called_once_with(mock_config, incremental=True, dry_run=True, debug=True)
+        mock_setup_logging.assert_called_once_with(version=__version__, debug=True, project_root=Path.cwd())
+        mock_run_tasks.assert_called_once_with(mock_config, Path.cwd(), incremental=True, dry_run=True, debug=True)
 
     @patch("glocaltext.__main__._load_config")
     @patch("glocaltext.__main__._parse_args")

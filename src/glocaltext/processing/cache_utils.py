@@ -29,7 +29,7 @@ def calculate_checksum(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _get_task_cache_path(task: TranslationTask) -> Path:
+def _get_task_cache_path(task: TranslationTask, project_root: Path) -> Path:
     """
     Get the cache path for a task, respecting custom cache_path if provided.
 
@@ -38,18 +38,13 @@ def _get_task_cache_path(task: TranslationTask) -> Path:
 
     The cache filename is always based on the task's UUID (task_id), not its name,
     ensuring stability even when the task name changes.
-    """
-    if task.cache_path:
-        # User-specified custom cache directory (relative to project root)
-        try:
-            cache_dir = paths.find_project_root() / task.cache_path
-        except FileNotFoundError:
-            logger.warning("Could not determine project root. Falling back to default cache directory.")
-            cache_dir = paths.get_cache_dir()
-    else:
-        # Default cache directory
-        cache_dir = paths.get_cache_dir()
 
+    Args:
+        task: The translation task.
+        project_root: The root path of the project.
+
+    """
+    cache_dir = project_root / task.cache_path if task.cache_path else paths.get_cache_dir(project_root)
     paths.ensure_dir_exists(cache_dir)
 
     # Use task_id (UUID) as the filename for stability

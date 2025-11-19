@@ -123,7 +123,7 @@ class CaptureProcessor(Processor):
     def process(self, context: ExecutionContext) -> None:
         """Find files and capture all text matches within them."""
         try:
-            base_path = paths.find_project_root()
+            base_path = context.project_root
             logger.debug("Using project root for file search: %s", base_path)
 
             context.files_to_process = list(_find_files(context.task, base_path))

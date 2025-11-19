@@ -5,6 +5,7 @@ import logging
 import sys
 import time
 from logging import FileHandler
+from pathlib import Path
 
 from . import paths
 
@@ -57,7 +58,7 @@ class FileFormatter(logging.Formatter):
         return f"{s}.{microseconds:06d}Z"
 
 
-def setup_logging(version: str, *, debug: bool = False) -> None:
+def setup_logging(version: str, *, debug: bool = False, project_root: Path | None = None) -> None:
     """
     Configure the root logger for the GlocalText application.
 
@@ -69,6 +70,7 @@ def setup_logging(version: str, *, debug: bool = False) -> None:
     Args:
         version: The application version, included in console logs.
         debug: If True, enables detailed file logging and sets console level to DEBUG.
+        project_root: Optional project root path. Only used when debug=True to write logs.
 
     """
     root_logger = logging.getLogger()
@@ -87,9 +89,9 @@ def setup_logging(version: str, *, debug: bool = False) -> None:
     # The filter that only allowed INFO is removed to allow DEBUG messages through.
     root_logger.addHandler(console_handler)
 
-    if debug:
+    if debug and project_root:
         try:
-            log_dir = paths.get_log_dir()
+            log_dir = paths.get_log_dir(project_root)
             paths.ensure_dir_exists(log_dir)
             log_file_path = log_dir / "debug.log"
 

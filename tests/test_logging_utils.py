@@ -186,7 +186,7 @@ class TestSetupLogging(unittest.TestCase):
             mock_handler_instance.level = logging.DEBUG
             mock_file_handler.return_value = mock_handler_instance
 
-            setup_logging(version, debug=True)
+            setup_logging(version, debug=True, project_root=mock_log_dir)
 
         root_logger = logging.getLogger()
         assert root_logger.level == logging.DEBUG
@@ -278,7 +278,7 @@ class TestSetupLogging(unittest.TestCase):
         mock_file_handler_instance.level = logging.DEBUG
 
         with patch("glocaltext.logging_utils.paths.get_log_dir", return_value=mock_log_dir), patch("glocaltext.logging_utils.paths.ensure_dir_exists"), patch("glocaltext.logging_utils.FileHandler", return_value=mock_file_handler_instance):
-            setup_logging(version, debug=True)
+            setup_logging(version, debug=True, project_root=mock_log_dir)
 
         # Verify setFormatter was called with FileFormatter
         mock_file_handler_instance.setFormatter.assert_called_once()

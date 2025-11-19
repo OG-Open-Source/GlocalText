@@ -43,6 +43,7 @@ class TestCaptureProcessor(unittest.TestCase):
         self.context = ExecutionContext(
             task=self.mock_task,
             config=self.mock_config,
+            project_root=Path.cwd(),
         )
 
     @patch("glocaltext.paths.find_project_root")
@@ -132,6 +133,7 @@ class TestTerminatingRuleProcessor(unittest.TestCase):
         self.base_context = ExecutionContext(
             task=self.mock_task,
             config=self.mock_config,
+            project_root=Path.cwd(),
         )
 
     def test_skip_rule_terminates_match(self) -> None:
@@ -195,7 +197,7 @@ class TestCacheProcessor(unittest.TestCase):
             source=Source(include=["*.txt"]),
             incremental=True,
         )
-        self.context = ExecutionContext(task=self.mock_task, config=self.mock_config)
+        self.context = ExecutionContext(task=self.mock_task, config=self.mock_config, project_root=Path.cwd())
         self.processor = CacheProcessor()
 
     def test_non_incremental_skips_processing(self) -> None:
@@ -244,7 +246,7 @@ class TestTranslationProcessor(unittest.TestCase):
         """Set up a mock execution context for the tests."""
         self.mock_config = GlocalConfig(providers={"mock": ProviderSettings()})
         self.mock_task = TranslationTask(name="translate_task", source_lang="en", target_lang="fr", translator="mock", source=Source(include=["*.txt"]))
-        self.context = ExecutionContext(task=self.mock_task, config=self.mock_config)
+        self.context = ExecutionContext(task=self.mock_task, config=self.mock_config, project_root=Path.cwd())
         self.processor = TranslationProcessor()
 
     def test_skips_if_languages_are_the_same(self) -> None:
@@ -293,7 +295,7 @@ class TestCacheUpdateProcessor(unittest.TestCase):
             source=Source(include=["*.txt"]),
             incremental=True,
         )
-        self.context = ExecutionContext(task=self.mock_task, config=self.mock_config)
+        self.context = ExecutionContext(task=self.mock_task, config=self.mock_config, project_root=Path.cwd())
         self.processor = CacheUpdateProcessor()
 
     @patch("glocaltext.paths.find_project_root")
@@ -346,7 +348,7 @@ class TestWriteBackProcessor(unittest.TestCase):
             source=Source(include=["*.txt"]),
             output=Output(in_place=True),
         )
-        self.context = ExecutionContext(task=self.mock_task, config=self.mock_config)
+        self.context = ExecutionContext(task=self.mock_task, config=self.mock_config, project_root=Path.cwd())
         self.processor = WriteBackProcessor()
 
     @patch("glocaltext.processing.writeback_processor._orchestrate_file_write")
@@ -417,7 +419,7 @@ class TestProcessorHelpers(unittest.TestCase):
         # Create a task with a known task_id
         task = TranslationTask(name="My Test Task", source_lang="en", target_lang="fr", translator="mock", source=Source(include=["*.txt"]), task_id="test-uuid-12345")
 
-        result_path = _get_task_cache_path(task)
+        result_path = _get_task_cache_path(task, Path.cwd())
         mock_get_cache_dir.assert_called_once()
         expected_filename = "test-uuid-12345.json"
         expected_path = mock_cache_dir / expected_filename

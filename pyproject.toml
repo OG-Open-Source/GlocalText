@@ -28,7 +28,7 @@
   name = "GlocalText"
   readme = "README.md"
   requires-python = ">=3.10,<4.0"
-  version = "4.0.0rc1"
+  version = "4.0.0"
 
 [dependency-groups]
   dev = ["pyclean>=3.4.0,<4.0.0"]
@@ -56,7 +56,6 @@
   build-backend = "uv_build"
   requires      = ["uv_build>=0.9.8,<0.10.0"]
 
-
 [tool.ruff]
   line-length = 320
 
@@ -68,11 +67,8 @@
   [tool.ruff.lint]
     ignore = ["COM812", "D203", "D212"]
     select = ["ALL"]
-
     [tool.ruff.lint.per-file-ignores]
-      "debug_replace_rules.py"     = ["T201"]
-      "src/glocaltext/coverage.py" = ["RUF001", "RUF002", "RUF003"]
-      "tests/*.py"                 = ["PLR2004", "PT011", "RUF001", "RUF002", "RUF003", "S101"]
+      "tests/*.py" = ["PLR2004", "PT011", "RUF001", "RUF002", "RUF003", "S101"]
 
 [tool.pytest.ini_options]
   markers = [
