@@ -1,3 +1,10 @@
+function getPreview(content, query) {
+	const index = content.toLowerCase().indexOf(query);
+	const start = Math.max(0, index - 20);
+	const end = Math.min(content.length, index + query.length + 20);
+	return '...' + content.substring(start, end) + '...';
+}
+
 document.addEventListener('DOMContentLoaded', () => {
 	// Mobile Menu Toggle
 	const mobileMenuBtn = document.querySelector('.mobile-menu-btn');
@@ -49,13 +56,6 @@ document.addEventListener('DOMContentLoaded', () => {
 		});
 	}
 
-	function getPreview(content, query) {
-		const index = content.toLowerCase().indexOf(query);
-		const start = Math.max(0, index - 20);
-		const end = Math.min(content.length, index + query.length + 20);
-		return '...' + content.substring(start, end) + '...';
-	}
-
 	function displayResults(results) {
 		searchResultsContainer.innerHTML = '';
 
@@ -87,22 +87,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
 	// Check for saved user preference, if any, on load of the website
 	const savedTheme = localStorage.getItem('theme');
-	const systemTheme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+	const systemTheme = globalThis.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
 
 	if (savedTheme) {
-		htmlElement.setAttribute('data-theme', savedTheme);
+		htmlElement.dataset.theme = savedTheme;
 		updateThemeIcon(savedTheme);
 	} else if (systemTheme === 'light') {
-		htmlElement.setAttribute('data-theme', 'light');
+		htmlElement.dataset.theme = 'light';
 		updateThemeIcon('light');
 	}
 
 	if (themeToggleBtn) {
 		themeToggleBtn.addEventListener('click', () => {
-			const currentTheme = htmlElement.getAttribute('data-theme');
+			const currentTheme = htmlElement.dataset.theme;
 			const newTheme = currentTheme === 'light' ? 'dark' : 'light';
 
-			htmlElement.setAttribute('data-theme', newTheme);
+			htmlElement.dataset.theme = newTheme;
 			localStorage.setItem('theme', newTheme);
 			updateThemeIcon(newTheme);
 		});
