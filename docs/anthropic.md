@@ -523,27 +523,27 @@ import com.anthropic.models.messages.TextBlockParam;
 
 public class PromptCachingExample {
 
-    public static void main(String[] args) {
-        AnthropicClient client = AnthropicOkHttpClient.fromEnv();
+  public static void main(String[] args) {
+    AnthropicClient client = AnthropicOkHttpClient.fromEnv();
 
-        MessageCreateParams params = MessageCreateParams.builder()
-                .model(Model.CLAUDE_OPUS_4_20250514)
-                .maxTokens(1024)
-                .systemOfTextBlockParams(List.of(
-                        TextBlockParam.builder()
-                                .text("You are an AI assistant tasked with analyzing literary works. Your goal is to provide insightful commentary on themes, characters, and writing style.\n")
-                                .build(),
-                        TextBlockParam.builder()
-                                .text("<the entire contents of 'Pride and Prejudice'>")
-                                .cacheControl(CacheControlEphemeral.builder().build())
-                                .build()
-                ))
-                .addUserMessage("Analyze the major themes in 'Pride and Prejudice'.")
-                .build();
+    MessageCreateParams params = MessageCreateParams.builder()
+        .model(Model.CLAUDE_OPUS_4_20250514)
+        .maxTokens(1024)
+        .systemOfTextBlockParams(List.of(
+            TextBlockParam.builder()
+                .text(
+                    "You are an AI assistant tasked with analyzing literary works. Your goal is to provide insightful commentary on themes, characters, and writing style.\n")
+                .build(),
+            TextBlockParam.builder()
+                .text("<the entire contents of 'Pride and Prejudice'>")
+                .cacheControl(CacheControlEphemeral.builder().build())
+                .build()))
+        .addUserMessage("Analyze the major themes in 'Pride and Prejudice'.")
+        .build();
 
-        Message message = client.messages().create(params);
-        System.out.println(message.usage());
-    }
+    Message message = client.messages().create(params);
+    System.out.println(message.usage());
+  }
 }
 ```
 
@@ -941,1223 +941,1154 @@ To help you get started with prompt caching, we've prepared a [prompt caching co
 
 Below, we've included several code snippets that showcase various prompt caching patterns. These examples demonstrate how to implement caching in different scenarios, helping you understand the practical applications of this feature:
 
-      ```bash
-      curl https://api.anthropic.com/v1/messages \
-           --header "x-api-key: $ANTHROPIC_API_KEY" \
-           --header "anthropic-version: 2023-06-01" \
-           --header "content-type: application/json" \
-           --data \
-      '{
-          "model": "claude-sonnet-4-5",
-          "max_tokens": 1024,
-          "system": [
-              {
-                  "type": "text",
-                  "text": "You are an AI assistant tasked with analyzing legal documents."
-              },
-              {
-                  "type": "text",
-                  "text": "Here is the full text of a complex legal agreement: [Insert full text of a 50-page legal agreement here]",
-                  "cache_control": {"type": "ephemeral"}
-              }
-          ],
-          "messages": [
-              {
-                  "role": "user",
-                  "content": "What are the key terms and conditions in this agreement?"
-              }
-          ]
-      }'
-      ```
-
-      ```Python
-      import anthropic
-      client = anthropic.Anthropic()
-
-      response = client.messages.create(
-          model="claude-sonnet-4-5",
-          max_tokens=1024,
-          system=[
-              {
-                  "type": "text",
-                  "text": "You are an AI assistant tasked with analyzing legal documents."
-              },
-              {
-                  "type": "text",
-                  "text": "Here is the full text of a complex legal agreement: [Insert full text of a 50-page legal agreement here]",
-                  "cache_control": {"type": "ephemeral"}
-              }
-          ],
-          messages=[
-              {
-                  "role": "user",
-                  "content": "What are the key terms and conditions in this agreement?"
-              }
-          ]
-      )
-      print(response.model_dump_json())
-      ```
-
-      ```typescript
-      import Anthropic from '@anthropic-ai/sdk';
-
-      const client = new Anthropic();
-
-      const response = await client.messages.create({
-        model: "claude-sonnet-4-5",
-        max_tokens: 1024,
-        system: [
-          {
-              "type": "text",
-              "text": "You are an AI assistant tasked with analyzing legal documents."
-          },
-          {
-              "type": "text",
-              "text": "Here is the full text of a complex legal agreement: [Insert full text of a 50-page legal agreement here]",
-              "cache_control": {"type": "ephemeral"}
-          }
+```bash
+curl https://api.anthropic.com/v1/messages \
+    --header "x-api-key: $ANTHROPIC_API_KEY" \
+    --header "anthropic-version: 2023-06-01" \
+    --header "content-type: application/json" \
+    --data \
+    '{
+        "model": "claude-sonnet-4-5",
+        "max_tokens": 1024,
+        "system": [
+            {
+                "type": "text",
+                "text": "You are an AI assistant tasked with analyzing legal documents."
+            },
+            {
+                "type": "text",
+                "text": "Here is the full text of a complex legal agreement: [Insert full text of a 50-page legal agreement here]",
+                "cache_control": {"type": "ephemeral"}
+            }
         ],
-        messages: [
-          {
-              "role": "user",
-              "content": "What are the key terms and conditions in this agreement?"
-          }
+        "messages": [
+            {
+                "role": "user",
+                "content": "What are the key terms and conditions in this agreement?"
+            }
         ]
-      });
-      console.log(response);
-      ```
-
-      ```java
-      import java.util.List;
-
-      import com.anthropic.client.AnthropicClient;
-      import com.anthropic.client.okhttp.AnthropicOkHttpClient;
-      import com.anthropic.models.messages.CacheControlEphemeral;
-      import com.anthropic.models.messages.Message;
-      import com.anthropic.models.messages.MessageCreateParams;
-      import com.anthropic.models.messages.Model;
-      import com.anthropic.models.messages.TextBlockParam;
-
-      public class LegalDocumentAnalysisExample {
-
-          public static void main(String[] args) {
-              AnthropicClient client = AnthropicOkHttpClient.fromEnv();
-
-              MessageCreateParams params = MessageCreateParams.builder()
-                      .model(Model.CLAUDE_OPUS_4_20250514)
-                      .maxTokens(1024)
-                      .systemOfTextBlockParams(List.of(
-                              TextBlockParam.builder()
-                                      .text("You are an AI assistant tasked with analyzing legal documents.")
-                                      .build(),
-                              TextBlockParam.builder()
-                                      .text("Here is the full text of a complex legal agreement: [Insert full text of a 50-page legal agreement here]")
-                                      .cacheControl(CacheControlEphemeral.builder().build())
-                                      .build()
-                      ))
-                      .addUserMessage("What are the key terms and conditions in this agreement?")
-                      .build();
-
-              Message message = client.messages().create(params);
-              System.out.println(message);
-          }
-      }
-      ```
-
-
-    This example demonstrates basic prompt caching usage, caching the full text of the legal agreement as a prefix while keeping the user instruction uncached.
-
-    For the first request:
-
-    * `input_tokens`: Number of tokens in the user message only
-    * `cache_creation_input_tokens`: Number of tokens in the entire system message, including the legal document
-    * `cache_read_input_tokens`: 0 (no cache hit on first request)
-
-    For subsequent requests within the cache lifetime:
-
-    * `input_tokens`: Number of tokens in the user message only
-    * `cache_creation_input_tokens`: 0 (no new cache creation)
-    * `cache_read_input_tokens`: Number of tokens in the entire cached system message
-
-
-
-
-
-      ```bash
-      curl https://api.anthropic.com/v1/messages \
-           --header "x-api-key: $ANTHROPIC_API_KEY" \
-           --header "anthropic-version: 2023-06-01" \
-           --header "content-type: application/json" \
-           --data \
-      '{
-          "model": "claude-sonnet-4-5",
-          "max_tokens": 1024,
-          "tools": [
-              {
-                  "name": "get_weather",
-                  "description": "Get the current weather in a given location",
-                  "input_schema": {
-                      "type": "object",
-                      "properties": {
-                          "location": {
-                              "type": "string",
-                              "description": "The city and state, e.g. San Francisco, CA"
-                          },
-                          "unit": {
-                              "type": "string",
-                              "enum": ["celsius", "fahrenheit"],
-                              "description": "The unit of temperature, either celsius or fahrenheit"
-                          }
-                      },
-                      "required": ["location"]
-                  }
-              },
-              # many more tools
-              {
-                  "name": "get_time",
-                  "description": "Get the current time in a given time zone",
-                  "input_schema": {
-                      "type": "object",
-                      "properties": {
-                          "timezone": {
-                              "type": "string",
-                              "description": "The IANA time zone name, e.g. America/Los_Angeles"
-                          }
-                      },
-                      "required": ["timezone"]
-                  },
-                  "cache_control": {"type": "ephemeral"}
-              }
-          ],
-          "messages": [
-              {
-                  "role": "user",
-                  "content": "What is the weather and time in New York?"
-              }
-          ]
-      }'
-      ```
-
-      ```Python
-      import anthropic
-      client = anthropic.Anthropic()
-
-      response = client.messages.create(
-          model="claude-sonnet-4-5",
-          max_tokens=1024,
-          tools=[
-              {
-                  "name": "get_weather",
-                  "description": "Get the current weather in a given location",
-                  "input_schema": {
-                      "type": "object",
-                      "properties": {
-                          "location": {
-                              "type": "string",
-                              "description": "The city and state, e.g. San Francisco, CA"
-                          },
-                          "unit": {
-                              "type": "string",
-                              "enum": ["celsius", "fahrenheit"],
-                              "description": "The unit of temperature, either 'celsius' or 'fahrenheit'"
-                          }
-                      },
-                      "required": ["location"]
-                  },
-              },
-              # many more tools
-              {
-                  "name": "get_time",
-                  "description": "Get the current time in a given time zone",
-                  "input_schema": {
-                      "type": "object",
-                      "properties": {
-                          "timezone": {
-                              "type": "string",
-                              "description": "The IANA time zone name, e.g. America/Los_Angeles"
-                          }
-                      },
-                      "required": ["timezone"]
-                  },
-                  "cache_control": {"type": "ephemeral"}
-              }
-          ],
-          messages=[
-              {
-                  "role": "user",
-                  "content": "What's the weather and time in New York?"
-              }
-          ]
-      )
-      print(response.model_dump_json())
-      ```
-
-      ```typescript
-      import Anthropic from '@anthropic-ai/sdk';
-
-      const client = new Anthropic();
-
-      const response = await client.messages.create({
-          model: "claude-sonnet-4-5",
-          max_tokens: 1024,
-          tools=[
-              {
-                  "name": "get_weather",
-                  "description": "Get the current weather in a given location",
-                  "input_schema": {
-                      "type": "object",
-                      "properties": {
-                          "location": {
-                              "type": "string",
-                              "description": "The city and state, e.g. San Francisco, CA"
-                          },
-                          "unit": {
-                              "type": "string",
-                              "enum": ["celsius", "fahrenheit"],
-                              "description": "The unit of temperature, either 'celsius' or 'fahrenheit'"
-                          }
-                      },
-                      "required": ["location"]
-                  },
-              },
-              // many more tools
-              {
-                  "name": "get_time",
-                  "description": "Get the current time in a given time zone",
-                  "input_schema": {
-                      "type": "object",
-                      "properties": {
-                          "timezone": {
-                              "type": "string",
-                              "description": "The IANA time zone name, e.g. America/Los_Angeles"
-                          }
-                      },
-                      "required": ["timezone"]
-                  },
-                  "cache_control": {"type": "ephemeral"}
-              }
-          ],
-          messages: [
-              {
-                  "role": "user",
-                  "content": "What's the weather and time in New York?"
-              }
-          ]
-      });
-      console.log(response);
-      ```
-
-      ```java
-      import java.util.List;
-      import java.util.Map;
-
-      import com.anthropic.client.AnthropicClient;
-      import com.anthropic.client.okhttp.AnthropicOkHttpClient;
-      import com.anthropic.core.JsonValue;
-      import com.anthropic.models.messages.CacheControlEphemeral;
-      import com.anthropic.models.messages.Message;
-      import com.anthropic.models.messages.MessageCreateParams;
-      import com.anthropic.models.messages.Model;
-      import com.anthropic.models.messages.Tool;
-      import com.anthropic.models.messages.Tool.InputSchema;
-
-      public class ToolsWithCacheControlExample {
-
-          public static void main(String[] args) {
-              AnthropicClient client = AnthropicOkHttpClient.fromEnv();
-
-              // Weather tool schema
-              InputSchema weatherSchema = InputSchema.builder()
-                      .properties(JsonValue.from(Map.of(
-                              "location", Map.of(
-                                      "type", "string",
-                                      "description", "The city and state, e.g. San Francisco, CA"
-                              ),
-                              "unit", Map.of(
-                                      "type", "string",
-                                      "enum", List.of("celsius", "fahrenheit"),
-                                      "description", "The unit of temperature, either celsius or fahrenheit"
-                              )
-                      )))
-                      .putAdditionalProperty("required", JsonValue.from(List.of("location")))
-                      .build();
-
-              // Time tool schema
-              InputSchema timeSchema = InputSchema.builder()
-                      .properties(JsonValue.from(Map.of(
-                              "timezone", Map.of(
-                                      "type", "string",
-                                      "description", "The IANA time zone name, e.g. America/Los_Angeles"
-                              )
-                      )))
-                      .putAdditionalProperty("required", JsonValue.from(List.of("timezone")))
-                      .build();
-
-              MessageCreateParams params = MessageCreateParams.builder()
-                      .model(Model.CLAUDE_OPUS_4_20250514)
-                      .maxTokens(1024)
-                      .addTool(Tool.builder()
-                              .name("get_weather")
-                              .description("Get the current weather in a given location")
-                              .inputSchema(weatherSchema)
-                              .build())
-                      .addTool(Tool.builder()
-                              .name("get_time")
-                              .description("Get the current time in a given time zone")
-                              .inputSchema(timeSchema)
-                              .cacheControl(CacheControlEphemeral.builder().build())
-                              .build())
-                      .addUserMessage("What is the weather and time in New York?")
-                      .build();
-
-              Message message = client.messages().create(params);
-              System.out.println(message);
-          }
-      }
-      ```
-
-
-    In this example, we demonstrate caching tool definitions.
-
-    The `cache_control` parameter is placed on the final tool (`get_time`) to designate all of the tools as part of the static prefix.
-
-    This means that all tool definitions, including `get_weather` and any other tools defined before `get_time`, will be cached as a single prefix.
-
-    This approach is useful when you have a consistent set of tools that you want to reuse across multiple requests without re-processing them each time.
-
-    For the first request:
-
-    * `input_tokens`: Number of tokens in the user message
-    * `cache_creation_input_tokens`: Number of tokens in all tool definitions and system prompt
-    * `cache_read_input_tokens`: 0 (no cache hit on first request)
-
-    For subsequent requests within the cache lifetime:
-
-    * `input_tokens`: Number of tokens in the user message
-    * `cache_creation_input_tokens`: 0 (no new cache creation)
-    * `cache_read_input_tokens`: Number of tokens in all cached tool definitions and system prompt
-
-
-
-
-
-      ```bash
-      curl https://api.anthropic.com/v1/messages \
-           --header "x-api-key: $ANTHROPIC_API_KEY" \
-           --header "anthropic-version: 2023-06-01" \
-           --header "content-type: application/json" \
-           --data \
-      '{
-          "model": "claude-sonnet-4-5",
-          "max_tokens": 1024,
-          "system": [
-              {
-                  "type": "text",
-                  "text": "...long system prompt",
-                  "cache_control": {"type": "ephemeral"}
-              }
-          ],
-          "messages": [
-              {
-                  "role": "user",
-                  "content": [
-                      {
-                          "type": "text",
-                          "text": "Hello, can you tell me more about the solar system?",
-                      }
-                  ]
-              },
-              {
-                  "role": "assistant",
-                  "content": "Certainly! The solar system is the collection of celestial bodies that orbit our Sun. It consists of eight planets, numerous moons, asteroids, comets, and other objects. The planets, in order from closest to farthest from the Sun, are: Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune. Each planet has its own unique characteristics and features. Is there a specific aspect of the solar system you would like to know more about?"
-              },
-              {
-                  "role": "user",
-                  "content": [
-                      {
-                          "type": "text",
-                          "text": "Good to know."
-                      },
-                      {
-                          "type": "text",
-                          "text": "Tell me more about Mars.",
-                          "cache_control": {"type": "ephemeral"}
-                      }
-                  ]
-              }
-          ]
-      }'
-      ```
-
-      ```Python
-      import anthropic
-      client = anthropic.Anthropic()
-
-      response = client.messages.create(
-          model="claude-sonnet-4-5",
-          max_tokens=1024,
-          system=[
-              {
-                  "type": "text",
-                  "text": "...long system prompt",
-                  "cache_control": {"type": "ephemeral"}
-              }
-          ],
-          messages=[
-              # ...long conversation so far
-              {
-                  "role": "user",
-                  "content": [
-                      {
-                          "type": "text",
-                          "text": "Hello, can you tell me more about the solar system?",
-                      }
-                  ]
-              },
-              {
-                  "role": "assistant",
-                  "content": "Certainly! The solar system is the collection of celestial bodies that orbit our Sun. It consists of eight planets, numerous moons, asteroids, comets, and other objects. The planets, in order from closest to farthest from the Sun, are: Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune. Each planet has its own unique characteristics and features. Is there a specific aspect of the solar system you'd like to know more about?"
-              },
-              {
-                  "role": "user",
-                  "content": [
-                      {
-                          "type": "text",
-                          "text": "Good to know."
-                      },
-                      {
-                          "type": "text",
-                          "text": "Tell me more about Mars.",
-                          "cache_control": {"type": "ephemeral"}
-                      }
-                  ]
-              }
-          ]
-      )
-      print(response.model_dump_json())
-      ```
-
-      ```typescript
-      import Anthropic from '@anthropic-ai/sdk';
-
-      const client = new Anthropic();
-
-      const response = await client.messages.create({
-          model: "claude-sonnet-4-5",
-          max_tokens: 1024,
-          system=[
-              {
-                  "type": "text",
-                  "text": "...long system prompt",
-                  "cache_control": {"type": "ephemeral"}
-              }
-          ],
-          messages=[
-              // ...long conversation so far
-              {
-                  "role": "user",
-                  "content": [
-                      {
-                          "type": "text",
-                          "text": "Hello, can you tell me more about the solar system?",
-                      }
-                  ]
-              },
-              {
-                  "role": "assistant",
-                  "content": "Certainly! The solar system is the collection of celestial bodies that orbit our Sun. It consists of eight planets, numerous moons, asteroids, comets, and other objects. The planets, in order from closest to farthest from the Sun, are: Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune. Each planet has its own unique characteristics and features. Is there a specific aspect of the solar system you'd like to know more about?"
-              },
-              {
-                  "role": "user",
-                  "content": [
-                      {
-                          "type": "text",
-                          "text": "Good to know."
-                      },
-                      {
-                          "type": "text",
-                          "text": "Tell me more about Mars.",
-                          "cache_control": {"type": "ephemeral"}
-                      }
-                  ]
-              }
-          ]
-      });
-      console.log(response);
-      ```
-
-      ```java
-      import java.util.List;
-
-      import com.anthropic.client.AnthropicClient;
-      import com.anthropic.client.okhttp.AnthropicOkHttpClient;
-      import com.anthropic.models.messages.CacheControlEphemeral;
-      import com.anthropic.models.messages.ContentBlockParam;
-      import com.anthropic.models.messages.Message;
-      import com.anthropic.models.messages.MessageCreateParams;
-      import com.anthropic.models.messages.Model;
-      import com.anthropic.models.messages.TextBlockParam;
-
-      public class ConversationWithCacheControlExample {
-
-          public static void main(String[] args) {
-              AnthropicClient client = AnthropicOkHttpClient.fromEnv();
-
-              // Create ephemeral system prompt
-              TextBlockParam systemPrompt = TextBlockParam.builder()
-                      .text("...long system prompt")
-                      .cacheControl(CacheControlEphemeral.builder().build())
-                      .build();
-
-              // Create message params
-              MessageCreateParams params = MessageCreateParams.builder()
-                      .model(Model.CLAUDE_OPUS_4_20250514)
-                      .maxTokens(1024)
-                      .systemOfTextBlockParams(List.of(systemPrompt))
-                      // First user message (without cache control)
-                      .addUserMessage("Hello, can you tell me more about the solar system?")
-                      // Assistant response
-                      .addAssistantMessage("Certainly! The solar system is the collection of celestial bodies that orbit our Sun. It consists of eight planets, numerous moons, asteroids, comets, and other objects. The planets, in order from closest to farthest from the Sun, are: Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune. Each planet has its own unique characteristics and features. Is there a specific aspect of the solar system you would like to know more about?")
-                      // Second user message (with cache control)
-                      .addUserMessageOfBlockParams(List.of(
-                              ContentBlockParam.ofText(TextBlockParam.builder()
-                                      .text("Good to know.")
-                                      .build()),
-                              ContentBlockParam.ofText(TextBlockParam.builder()
-                                      .text("Tell me more about Mars.")
-                                      .cacheControl(CacheControlEphemeral.builder().build())
-                                      .build())
-                      ))
-                      .build();
-
-              Message message = client.messages().create(params);
-              System.out.println(message);
-          }
-      }
-      ```
-
-
-    In this example, we demonstrate how to use prompt caching in a multi-turn conversation.
-
-    During each turn, we mark the final block of the final message with `cache_control` so the conversation can be incrementally cached. The system will automatically lookup and use the longest previously cached prefix for follow-up messages. That is, blocks that were previously marked with a `cache_control` block are later not marked with this, but they will still be considered a cache hit (and also a cache refresh!) if they are hit within 5 minutes.
-
-    In addition, note that the `cache_control` parameter is placed on the system message. This is to ensure that if this gets evicted from the cache (after not being used for more than 5 minutes), it will get added back to the cache on the next request.
-
-    This approach is useful for maintaining context in ongoing conversations without repeatedly processing the same information.
-
-    When this is set up properly, you should see the following in the usage response of each request:
-
-    * `input_tokens`: Number of tokens in the new user message (will be minimal)
-    * `cache_creation_input_tokens`: Number of tokens in the new assistant and user turns
-    * `cache_read_input_tokens`: Number of tokens in the conversation up to the previous turn
-
-
-
-
-
-      ```bash
-      curl https://api.anthropic.com/v1/messages \
-           --header "x-api-key: $ANTHROPIC_API_KEY" \
-           --header "anthropic-version: 2023-06-01" \
-           --header "content-type: application/json" \
-           --data \
-      '{
-          "model": "claude-sonnet-4-5",
-          "max_tokens": 1024,
-          "tools": [
-              {
-                  "name": "search_documents",
-                  "description": "Search through the knowledge base",
-                  "input_schema": {
-                      "type": "object",
-                      "properties": {
-                          "query": {
-                              "type": "string",
-                              "description": "Search query"
-                          }
-                      },
-                      "required": ["query"]
-                  }
-              },
-              {
-                  "name": "get_document",
-                  "description": "Retrieve a specific document by ID",
-                  "input_schema": {
-                      "type": "object",
-                      "properties": {
-                          "doc_id": {
-                              "type": "string",
-                              "description": "Document ID"
-                          }
-                      },
-                      "required": ["doc_id"]
-                  },
-                  "cache_control": {"type": "ephemeral"}
-              }
-          ],
-          "system": [
-              {
-                  "type": "text",
-                  "text": "You are a helpful research assistant with access to a document knowledge base.\n\n# Instructions\n- Always search for relevant documents before answering\n- Provide citations for your sources\n- Be objective and accurate in your responses\n- If multiple documents contain relevant information, synthesize them\n- Acknowledge when information is not available in the knowledge base",
-                  "cache_control": {"type": "ephemeral"}
-              },
-              {
-                  "type": "text",
-                  "text": "# Knowledge Base Context\n\nHere are the relevant documents for this conversation:\n\n## Document 1: Solar System Overview\nThe solar system consists of the Sun and all objects that orbit it...\n\n## Document 2: Planetary Characteristics\nEach planet has unique features. Mercury is the smallest planet...\n\n## Document 3: Mars Exploration\nMars has been a target of exploration for decades...\n\n[Additional documents...]",
-                  "cache_control": {"type": "ephemeral"}
-              }
-          ],
-          "messages": [
-              {
-                  "role": "user",
-                  "content": "Can you search for information about Mars rovers?"
-              },
-              {
-                  "role": "assistant",
-                  "content": [
-                      {
-                          "type": "tool_use",
-                          "id": "tool_1",
-                          "name": "search_documents",
-                          "input": {"query": "Mars rovers"}
-                      }
-                  ]
-              },
-              {
-                  "role": "user",
-                  "content": [
-                      {
-                          "type": "tool_result",
-                          "tool_use_id": "tool_1",
-                          "content": "Found 3 relevant documents: Document 3 (Mars Exploration), Document 7 (Rover Technology), Document 9 (Mission History)"
-                      }
-                  ]
-              },
-              {
-                  "role": "assistant",
-                  "content": [
-                      {
-                          "type": "text",
-                          "text": "I found 3 relevant documents about Mars rovers. Let me get more details from the Mars Exploration document."
-                      }
-                  ]
-              },
-              {
-                  "role": "user",
-                  "content": [
-                      {
-                          "type": "text",
-                          "text": "Yes, please tell me about the Perseverance rover specifically.",
-                          "cache_control": {"type": "ephemeral"}
-                      }
-                  ]
-              }
-          ]
-      }'
-      ```
-
-      ```Python
-      import anthropic
-      client = anthropic.Anthropic()
-
-      response = client.messages.create(
-          model="claude-sonnet-4-5",
-          max_tokens=1024,
-          tools=[
-              {
-                  "name": "search_documents",
-                  "description": "Search through the knowledge base",
-                  "input_schema": {
-                      "type": "object",
-                      "properties": {
-                          "query": {
-                              "type": "string",
-                              "description": "Search query"
-                          }
-                      },
-                      "required": ["query"]
-                  }
-              },
-              {
-                  "name": "get_document",
-                  "description": "Retrieve a specific document by ID",
-                  "input_schema": {
-                      "type": "object",
-                      "properties": {
-                          "doc_id": {
-                              "type": "string",
-                              "description": "Document ID"
-                          }
-                      },
-                      "required": ["doc_id"]
-                  },
-                  "cache_control": {"type": "ephemeral"}
-              }
-          ],
-          system=[
-              {
-                  "type": "text",
-                  "text": "You are a helpful research assistant with access to a document knowledge base.\n\n# Instructions\n- Always search for relevant documents before answering\n- Provide citations for your sources\n- Be objective and accurate in your responses\n- If multiple documents contain relevant information, synthesize them\n- Acknowledge when information is not available in the knowledge base",
-                  "cache_control": {"type": "ephemeral"}
-              },
-              {
-                  "type": "text",
-                  "text": "# Knowledge Base Context\n\nHere are the relevant documents for this conversation:\n\n## Document 1: Solar System Overview\nThe solar system consists of the Sun and all objects that orbit it...\n\n## Document 2: Planetary Characteristics\nEach planet has unique features. Mercury is the smallest planet...\n\n## Document 3: Mars Exploration\nMars has been a target of exploration for decades...\n\n[Additional documents...]",
-                  "cache_control": {"type": "ephemeral"}
-              }
-          ],
-          messages=[
-              {
-                  "role": "user",
-                  "content": "Can you search for information about Mars rovers?"
-              },
-              {
-                  "role": "assistant",
-                  "content": [
-                      {
-                          "type": "tool_use",
-                          "id": "tool_1",
-                          "name": "search_documents",
-                          "input": {"query": "Mars rovers"}
-                      }
-                  ]
-              },
-              {
-                  "role": "user",
-                  "content": [
-                      {
-                          "type": "tool_result",
-                          "tool_use_id": "tool_1",
-                          "content": "Found 3 relevant documents: Document 3 (Mars Exploration), Document 7 (Rover Technology), Document 9 (Mission History)"
-                      }
-                  ]
-              },
-              {
-                  "role": "assistant",
-                  "content": [
-                      {
-                          "type": "text",
-                          "text": "I found 3 relevant documents about Mars rovers. Let me get more details from the Mars Exploration document."
-                      }
-                  ]
-              },
-              {
-                  "role": "user",
-                  "content": [
-                      {
-                          "type": "text",
-                          "text": "Yes, please tell me about the Perseverance rover specifically.",
-                          "cache_control": {"type": "ephemeral"}
-                      }
-                  ]
-              }
-          ]
-      )
-      print(response.model_dump_json())
-      ```
-
-      ```typescript
-      import Anthropic from '@anthropic-ai/sdk';
-
-      const client = new Anthropic();
-
-      const response = await client.messages.create({
-          model: "claude-sonnet-4-5",
-          max_tokens: 1024,
-          tools: [
-              {
-                  name: "search_documents",
-                  description: "Search through the knowledge base",
-                  input_schema: {
-                      type: "object",
-                      properties: {
-                          query: {
-                              type: "string",
-                              description: "Search query"
-                          }
-                      },
-                      required: ["query"]
-                  }
-              },
-              {
-                  name: "get_document",
-                  description: "Retrieve a specific document by ID",
-                  input_schema: {
-                      type: "object",
-                      properties: {
-                          doc_id: {
-                              type: "string",
-                              description: "Document ID"
-                          }
-                      },
-                      required: ["doc_id"]
-                  },
-                  cache_control: { type: "ephemeral" }
-              }
-          ],
-          system: [
-              {
-                  type: "text",
-                  text: "You are a helpful research assistant with access to a document knowledge base.\n\n# Instructions\n- Always search for relevant documents before answering\n- Provide citations for your sources\n- Be objective and accurate in your responses\n- If multiple documents contain relevant information, synthesize them\n- Acknowledge when information is not available in the knowledge base",
-                  cache_control: { type: "ephemeral" }
-              },
-              {
-                  type: "text",
-                  text: "# Knowledge Base Context\n\nHere are the relevant documents for this conversation:\n\n## Document 1: Solar System Overview\nThe solar system consists of the Sun and all objects that orbit it...\n\n## Document 2: Planetary Characteristics\nEach planet has unique features. Mercury is the smallest planet...\n\n## Document 3: Mars Exploration\nMars has been a target of exploration for decades...\n\n[Additional documents...]",
-                  cache_control: { type: "ephemeral" }
-              }
-          ],
-          messages: [
-              {
-                  role: "user",
-                  content: "Can you search for information about Mars rovers?"
-              },
-              {
-                  role: "assistant",
-                  content: [
-                      {
-                          type: "tool_use",
-                          id: "tool_1",
-                          name: "search_documents",
-                          input: { query: "Mars rovers" }
-                      }
-                  ]
-              },
-              {
-                  role: "user",
-                  content: [
-                      {
-                          type: "tool_result",
-                          tool_use_id: "tool_1",
-                          content: "Found 3 relevant documents: Document 3 (Mars Exploration), Document 7 (Rover Technology), Document 9 (Mission History)"
-                      }
-                  ]
-              },
-              {
-                  role: "assistant",
-                  content: [
-                      {
-                          type: "text",
-                          text: "I found 3 relevant documents about Mars rovers. Let me get more details from the Mars Exploration document."
-                      }
-                  ]
-              },
-              {
-                  role: "user",
-                  content: [
-                      {
-                          type: "text",
-                          text: "Yes, please tell me about the Perseverance rover specifically.",
-                          cache_control: { type: "ephemeral" }
-                      }
-                  ]
-              }
-          ]
-      });
-      console.log(response);
-      ```
-
-      ```java
-      import java.util.List;
-      import java.util.Map;
-
-      import com.anthropic.client.AnthropicClient;
-      import com.anthropic.client.okhttp.AnthropicOkHttpClient;
-      import com.anthropic.core.JsonValue;
-      import com.anthropic.models.messages.CacheControlEphemeral;
-      import com.anthropic.models.messages.ContentBlockParam;
-      import com.anthropic.models.messages.Message;
-      import com.anthropic.models.messages.MessageCreateParams;
-      import com.anthropic.models.messages.Model;
-      import com.anthropic.models.messages.TextBlockParam;
-      import com.anthropic.models.messages.Tool;
-      import com.anthropic.models.messages.Tool.InputSchema;
-      import com.anthropic.models.messages.ToolResultBlockParam;
-      import com.anthropic.models.messages.ToolUseBlockParam;
-
-      public class MultipleCacheBreakpointsExample {
-
-          public static void main(String[] args) {
-              AnthropicClient client = AnthropicOkHttpClient.fromEnv();
-
-              // Search tool schema
-              InputSchema searchSchema = InputSchema.builder()
-                      .properties(JsonValue.from(Map.of(
-                              "query", Map.of(
-                                      "type", "string",
-                                      "description", "Search query"
-                              )
-                      )))
-                      .putAdditionalProperty("required", JsonValue.from(List.of("query")))
-                      .build();
-
-              // Get document tool schema
-              InputSchema getDocSchema = InputSchema.builder()
-                      .properties(JsonValue.from(Map.of(
-                              "doc_id", Map.of(
-                                      "type", "string",
-                                      "description", "Document ID"
-                              )
-                      )))
-                      .putAdditionalProperty("required", JsonValue.from(List.of("doc_id")))
-                      .build();
-
-              MessageCreateParams params = MessageCreateParams.builder()
-                      .model(Model.CLAUDE_OPUS_4_20250514)
-                      .maxTokens(1024)
-                      // Tools with cache control on the last one
-                      .addTool(Tool.builder()
-                              .name("search_documents")
-                              .description("Search through the knowledge base")
-                              .inputSchema(searchSchema)
-                              .build())
-                      .addTool(Tool.builder()
-                              .name("get_document")
-                              .description("Retrieve a specific document by ID")
-                              .inputSchema(getDocSchema)
-                              .cacheControl(CacheControlEphemeral.builder().build())
-                              .build())
-                      // System prompts with cache control on instructions and context separately
-                      .systemOfTextBlockParams(List.of(
-                              TextBlockParam.builder()
-                                      .text("You are a helpful research assistant with access to a document knowledge base.\n\n# Instructions\n- Always search for relevant documents before answering\n- Provide citations for your sources\n- Be objective and accurate in your responses\n- If multiple documents contain relevant information, synthesize them\n- Acknowledge when information is not available in the knowledge base")
-                                      .cacheControl(CacheControlEphemeral.builder().build())
-                                      .build(),
-                              TextBlockParam.builder()
-                                      .text("# Knowledge Base Context\n\nHere are the relevant documents for this conversation:\n\n## Document 1: Solar System Overview\nThe solar system consists of the Sun and all objects that orbit it...\n\n## Document 2: Planetary Characteristics\nEach planet has unique features. Mercury is the smallest planet...\n\n## Document 3: Mars Exploration\nMars has been a target of exploration for decades...\n\n[Additional documents...]")
-                                      .cacheControl(CacheControlEphemeral.builder().build())
-                                      .build()
-                      ))
-                      // Conversation history
-                      .addUserMessage("Can you search for information about Mars rovers?")
-                      .addAssistantMessageOfBlockParams(List.of(
-                              ContentBlockParam.ofToolUse(ToolUseBlockParam.builder()
-                                      .id("tool_1")
-                                      .name("search_documents")
-                                      .input(JsonValue.from(Map.of("query", "Mars rovers")))
-                                      .build())
-                      ))
-                      .addUserMessageOfBlockParams(List.of(
-                              ContentBlockParam.ofToolResult(ToolResultBlockParam.builder()
-                                      .toolUseId("tool_1")
-                                      .content("Found 3 relevant documents: Document 3 (Mars Exploration), Document 7 (Rover Technology), Document 9 (Mission History)")
-                                      .build())
-                      ))
-                      .addAssistantMessageOfBlockParams(List.of(
-                              ContentBlockParam.ofText(TextBlockParam.builder()
-                                      .text("I found 3 relevant documents about Mars rovers. Let me get more details from the Mars Exploration document.")
-                                      .build())
-                      ))
-                      .addUserMessageOfBlockParams(List.of(
-                              ContentBlockParam.ofText(TextBlockParam.builder()
-                                      .text("Yes, please tell me about the Perseverance rover specifically.")
-                                      .cacheControl(CacheControlEphemeral.builder().build())
-                                      .build())
-                      ))
-                      .build();
-
-              Message message = client.messages().create(params);
-              System.out.println(message);
-          }
-      }
-      ```
-
-
-    This comprehensive example demonstrates how to use all 4 available cache breakpoints to optimize different parts of your prompt:
-
-    1. **Tools cache** (cache breakpoint 1): The `cache_control` parameter on the last tool definition caches all tool definitions.
-
-    2. **Reusable instructions cache** (cache breakpoint 2): The static instructions in the system prompt are cached separately. These instructions rarely change between requests.
-
-    3. **RAG context cache** (cache breakpoint 3): The knowledge base documents are cached independently, allowing you to update the RAG documents without invalidating the tools or instructions cache.
-
-    4. **Conversation history cache** (cache breakpoint 4): The assistant's response is marked with `cache_control` to enable incremental caching of the conversation as it progresses.
-
-    This approach provides maximum flexibility:
-
-    * If you only update the final user message, all four cache segments are reused
-    * If you update the RAG documents but keep the same tools and instructions, the first two cache segments are reused
-    * If you change the conversation but keep the same tools, instructions, and documents, the first three segments are reused
-    * Each cache breakpoint can be invalidated independently based on what changes in your application
-
-    For the first request:
-
-    * `input_tokens`: Tokens in the final user message
-    * `cache_creation_input_tokens`: Tokens in all cached segments (tools + instructions + RAG documents + conversation history)
-    * `cache_read_input_tokens`: 0 (no cache hits)
-
-    For subsequent requests with only a new user message:
-
-    * `input_tokens`: Tokens in the new user message only
-    * `cache_creation_input_tokens`: Any new tokens added to conversation history
-    * `cache_read_input_tokens`: All previously cached tokens (tools + instructions + RAG documents + previous conversation)
-
-    This pattern is especially powerful for:
-
-    * RAG applications with large document contexts
-    * Agent systems that use multiple tools
-    * Long-running conversations that need to maintain context
-    * Applications that need to optimize different parts of the prompt independently
+    }'
+```
+
+```Python
+import anthropic
+client = anthropic.Anthropic()
+
+response = client.messages.create(
+    model="claude-sonnet-4-5",
+    max_tokens=1024,
+    system=[
+        {
+            "type": "text",
+            "text": "You are an AI assistant tasked with analyzing legal documents."
+        },
+        {
+            "type": "text",
+            "text": "Here is the full text of a complex legal agreement: [Insert full text of a 50-page legal agreement here]",
+            "cache_control": {"type": "ephemeral"}
+        }
+    ],
+    messages=[
+        {
+            "role": "user",
+            "content": "What are the key terms and conditions in this agreement?"
+        }
+    ]
+)
+print(response.model_dump_json())
+```
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk';
+
+const client = new Anthropic();
+
+const response = await client.messages.create({
+	model: 'claude-sonnet-4-5',
+	max_tokens: 1024,
+	system: [
+		{
+			type: 'text',
+			text: 'You are an AI assistant tasked with analyzing legal documents.',
+		},
+		{
+			type: 'text',
+			text: 'Here is the full text of a complex legal agreement: [Insert full text of a 50-page legal agreement here]',
+			cache_control: { type: 'ephemeral' },
+		},
+	],
+	messages: [
+		{
+			role: 'user',
+			content: 'What are the key terms and conditions in this agreement?',
+		},
+	],
+});
+console.log(response);
+```
+
+```java
+import java.util.List;
+
+import com.anthropic.client.AnthropicClient;
+import com.anthropic.client.okhttp.AnthropicOkHttpClient;
+import com.anthropic.models.messages.CacheControlEphemeral;
+import com.anthropic.models.messages.Message;
+import com.anthropic.models.messages.MessageCreateParams;
+import com.anthropic.models.messages.Model;
+import com.anthropic.models.messages.TextBlockParam;
+
+public class LegalDocumentAnalysisExample {
+
+  public static void main(String[] args) {
+    AnthropicClient client = AnthropicOkHttpClient.fromEnv();
+
+    MessageCreateParams params = MessageCreateParams.builder()
+        .model(Model.CLAUDE_OPUS_4_20250514)
+        .maxTokens(1024)
+        .systemOfTextBlockParams(List.of(
+            TextBlockParam.builder()
+                .text("You are an AI assistant tasked with analyzing legal documents.")
+                .build(),
+            TextBlockParam.builder()
+                .text(
+                    "Here is the full text of a complex legal agreement: [Insert full text of a 50-page legal agreement here]")
+                .cacheControl(CacheControlEphemeral.builder().build())
+                .build()))
+        .addUserMessage("What are the key terms and conditions in this agreement?")
+        .build();
+
+    Message message = client.messages().create(params);
+    System.out.println(message);
+  }
+}
+```
+
+This example demonstrates basic prompt caching usage, caching the full text of the legal agreement as a prefix while keeping the user instruction uncached.
+
+For the first request:
+
+- `input_tokens`: Number of tokens in the user message only
+- `cache_creation_input_tokens`: Number of tokens in the entire system message, including the legal document
+- `cache_read_input_tokens`: 0 (no cache hit on first request)
+
+For subsequent requests within the cache lifetime:
+
+- `input_tokens`: Number of tokens in the user message only
+- `cache_creation_input_tokens`: 0 (no new cache creation)
+- `cache_read_input_tokens`: Number of tokens in the entire cached system message
+
+```bash
+curl https://api.anthropic.com/v1/messages \
+    --header "x-api-key: $ANTHROPIC_API_KEY" \
+    --header "anthropic-version: 2023-06-01" \
+    --header "content-type: application/json" \
+    --data \
+    '{
+        "model": "claude-sonnet-4-5",
+        "max_tokens": 1024,
+        "tools": [
+            {
+                "name": "get_weather",
+                "description": "Get the current weather in a given location",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "location": {
+                            "type": "string",
+                            "description": "The city and state, e.g. San Francisco, CA"
+                        },
+                        "unit": {
+                            "type": "string",
+                            "enum": ["celsius", "fahrenheit"],
+                            "description": "The unit of temperature, either celsius or fahrenheit"
+                        }
+                    },
+                    "required": ["location"]
+                }
+            },
+            # many more tools
+            {
+                "name": "get_time",
+                "description": "Get the current time in a given time zone",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "timezone": {
+                            "type": "string",
+                            "description": "The IANA time zone name, e.g. America/Los_Angeles"
+                        }
+                    },
+                    "required": ["timezone"]
+                },
+                "cache_control": {"type": "ephemeral"}
+            }
+        ],
+        "messages": [
+            {
+                "role": "user",
+                "content": "What is the weather and time in New York?"
+            }
+        ]
+    }'
+```
+
+```Python
+import anthropic
+client = anthropic.Anthropic()
+
+response = client.messages.create(
+    model="claude-sonnet-4-5",
+    max_tokens=1024,
+    tools=[
+        {
+            "name": "get_weather",
+            "description": "Get the current weather in a given location",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "The city and state, e.g. San Francisco, CA"
+                    },
+                    "unit": {
+                        "type": "string",
+                        "enum": ["celsius", "fahrenheit"],
+                        "description": "The unit of temperature, either 'celsius' or 'fahrenheit'"
+                    }
+                },
+                "required": ["location"]
+            },
+        },
+        # many more tools
+        {
+            "name": "get_time",
+            "description": "Get the current time in a given time zone",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "timezone": {
+                        "type": "string",
+                        "description": "The IANA time zone name, e.g. America/Los_Angeles"
+                    }
+                },
+                "required": ["timezone"]
+            },
+            "cache_control": {"type": "ephemeral"}
+        }
+    ],
+    messages=[
+        {
+            "role": "user",
+            "content": "What's the weather and time in New York?"
+        }
+    ]
+)
+print(response.model_dump_json())
+```
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk';
+
+const client = new Anthropic();
+
+const response = await client.messages.create({
+	model: 'claude-sonnet-4-5',
+	max_tokens: 1024,
+	tools = [
+		{
+			name: 'get_weather',
+			description: 'Get the current weather in a given location',
+			input_schema: {
+				type: 'object',
+				properties: {
+					location: {
+						type: 'string',
+						description: 'The city and state, e.g. San Francisco, CA',
+					},
+					unit: {
+						type: 'string',
+						enum: ['celsius', 'fahrenheit'],
+						description: "The unit of temperature, either 'celsius' or 'fahrenheit'",
+					},
+				},
+				required: ['location'],
+			},
+		},
+		// many more tools
+		{
+			name: 'get_time',
+			description: 'Get the current time in a given time zone',
+			input_schema: {
+				type: 'object',
+				properties: {
+					timezone: {
+						type: 'string',
+						description: 'The IANA time zone name, e.g. America/Los_Angeles',
+					},
+				},
+				required: ['timezone'],
+			},
+			cache_control: { type: 'ephemeral' },
+		},
+	],
+	messages: [
+		{
+			role: 'user',
+			content: "What's the weather and time in New York?",
+		},
+	],
+});
+console.log(response);
+```
+
+```java
+import java.util.List;
+import java.util.Map;
+
+import com.anthropic.client.AnthropicClient;
+import com.anthropic.client.okhttp.AnthropicOkHttpClient;
+import com.anthropic.core.JsonValue;
+import com.anthropic.models.messages.CacheControlEphemeral;
+import com.anthropic.models.messages.Message;
+import com.anthropic.models.messages.MessageCreateParams;
+import com.anthropic.models.messages.Model;
+import com.anthropic.models.messages.Tool;
+import com.anthropic.models.messages.Tool.InputSchema;
+
+public class ToolsWithCacheControlExample {
+
+  public static void main(String[] args) {
+    AnthropicClient client = AnthropicOkHttpClient.fromEnv();
+
+    // Weather tool schema
+    InputSchema weatherSchema = InputSchema.builder()
+        .properties(JsonValue.from(Map.of(
+            "location", Map.of(
+                "type", "string",
+                "description", "The city and state, e.g. San Francisco, CA"),
+            "unit", Map.of(
+                "type", "string",
+                "enum", List.of("celsius", "fahrenheit"),
+                "description", "The unit of temperature, either celsius or fahrenheit"))))
+        .putAdditionalProperty("required", JsonValue.from(List.of("location")))
+        .build();
+
+    // Time tool schema
+    InputSchema timeSchema = InputSchema.builder()
+        .properties(JsonValue.from(Map.of(
+            "timezone", Map.of(
+                "type", "string",
+                "description", "The IANA time zone name, e.g. America/Los_Angeles"))))
+        .putAdditionalProperty("required", JsonValue.from(List.of("timezone")))
+        .build();
+
+    MessageCreateParams params = MessageCreateParams.builder()
+        .model(Model.CLAUDE_OPUS_4_20250514)
+        .maxTokens(1024)
+        .addTool(Tool.builder()
+            .name("get_weather")
+            .description("Get the current weather in a given location")
+            .inputSchema(weatherSchema)
+            .build())
+        .addTool(Tool.builder()
+            .name("get_time")
+            .description("Get the current time in a given time zone")
+            .inputSchema(timeSchema)
+            .cacheControl(CacheControlEphemeral.builder().build())
+            .build())
+        .addUserMessage("What is the weather and time in New York?")
+        .build();
+
+    Message message = client.messages().create(params);
+    System.out.println(message);
+  }
+}
+```
+
+In this example, we demonstrate caching tool definitions.
+
+The `cache_control` parameter is placed on the final tool (`get_time`) to designate all of the tools as part of the static prefix.
+
+This means that all tool definitions, including `get_weather` and any other tools defined before `get_time`, will be cached as a single prefix.
+
+This approach is useful when you have a consistent set of tools that you want to reuse across multiple requests without re-processing them each time.
+
+For the first request:
+
+- `input_tokens`: Number of tokens in the user message
+- `cache_creation_input_tokens`: Number of tokens in all tool definitions and system prompt
+- `cache_read_input_tokens`: 0 (no cache hit on first request)
+
+For subsequent requests within the cache lifetime:
+
+- `input_tokens`: Number of tokens in the user message
+- `cache_creation_input_tokens`: 0 (no new cache creation)
+- `cache_read_input_tokens`: Number of tokens in all cached tool definitions and system prompt
+
+```bash
+curl https://api.anthropic.com/v1/messages \
+    --header "x-api-key: $ANTHROPIC_API_KEY" \
+    --header "anthropic-version: 2023-06-01" \
+    --header "content-type: application/json" \
+    --data \
+    '{
+        "model": "claude-sonnet-4-5",
+        "max_tokens": 1024,
+        "system": [
+            {
+                "type": "text",
+                "text": "...long system prompt",
+                "cache_control": {"type": "ephemeral"}
+            }
+        ],
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Hello, can you tell me more about the solar system?",
+                    }
+                ]
+            },
+            {
+                "role": "assistant",
+                "content": "Certainly! The solar system is the collection of celestial bodies that orbit our Sun. It consists of eight planets, numerous moons, asteroids, comets, and other objects. The planets, in order from closest to farthest from the Sun, are: Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune. Each planet has its own unique characteristics and features. Is there a specific aspect of the solar system you would like to know more about?"
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Good to know."
+                    },
+                    {
+                        "type": "text",
+                        "text": "Tell me more about Mars.",
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+            }
+        ]
+    }'
+```
+
+```Python
+import anthropic
+client = anthropic.Anthropic()
+
+response = client.messages.create(
+    model="claude-sonnet-4-5",
+    max_tokens=1024,
+    system=[
+        {
+            "type": "text",
+            "text": "...long system prompt",
+            "cache_control": {"type": "ephemeral"}
+        }
+    ],
+    messages=[
+        # ...long conversation so far
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Hello, can you tell me more about the solar system?",
+                }
+            ]
+        },
+        {
+            "role": "assistant",
+            "content": "Certainly! The solar system is the collection of celestial bodies that orbit our Sun. It consists of eight planets, numerous moons, asteroids, comets, and other objects. The planets, in order from closest to farthest from the Sun, are: Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune. Each planet has its own unique characteristics and features. Is there a specific aspect of the solar system you'd like to know more about?"
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Good to know."
+                },
+                {
+                    "type": "text",
+                    "text": "Tell me more about Mars.",
+                    "cache_control": {"type": "ephemeral"}
+                }
+            ]
+        }
+    ]
+)
+print(response.model_dump_json())
+```
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk';
+
+const client = new Anthropic();
+
+const response = await client.messages.create({
+	model: 'claude-sonnet-4-5',
+	max_tokens: 1024,
+	system = [
+		{
+			type: 'text',
+			text: '...long system prompt',
+			cache_control: { type: 'ephemeral' },
+		},
+	],
+	messages = [
+		// ...long conversation so far
+		{
+			role: 'user',
+			content: [
+				{
+					type: 'text',
+					text: 'Hello, can you tell me more about the solar system?',
+				},
+			],
+		},
+		{
+			role: 'assistant',
+			content: "Certainly! The solar system is the collection of celestial bodies that orbit our Sun. It consists of eight planets, numerous moons, asteroids, comets, and other objects. The planets, in order from closest to farthest from the Sun, are: Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune. Each planet has its own unique characteristics and features. Is there a specific aspect of the solar system you'd like to know more about?",
+		},
+		{
+			role: 'user',
+			content: [
+				{
+					type: 'text',
+					text: 'Good to know.',
+				},
+				{
+					type: 'text',
+					text: 'Tell me more about Mars.',
+					cache_control: { type: 'ephemeral' },
+				},
+			],
+		},
+	],
+});
+console.log(response);
+```
+
+```java
+import java.util.List;
+
+import com.anthropic.client.AnthropicClient;
+import com.anthropic.client.okhttp.AnthropicOkHttpClient;
+import com.anthropic.models.messages.CacheControlEphemeral;
+import com.anthropic.models.messages.ContentBlockParam;
+import com.anthropic.models.messages.Message;
+import com.anthropic.models.messages.MessageCreateParams;
+import com.anthropic.models.messages.Model;
+import com.anthropic.models.messages.TextBlockParam;
+
+public class ConversationWithCacheControlExample {
+
+  public static void main(String[] args) {
+    AnthropicClient client = AnthropicOkHttpClient.fromEnv();
+
+    // Create ephemeral system prompt
+    TextBlockParam systemPrompt = TextBlockParam.builder()
+        .text("...long system prompt")
+        .cacheControl(CacheControlEphemeral.builder().build())
+        .build();
+
+    // Create message params
+    MessageCreateParams params = MessageCreateParams.builder()
+        .model(Model.CLAUDE_OPUS_4_20250514)
+        .maxTokens(1024)
+        .systemOfTextBlockParams(List.of(systemPrompt))
+        // First user message (without cache control)
+        .addUserMessage("Hello, can you tell me more about the solar system?")
+        // Assistant response
+        .addAssistantMessage(
+            "Certainly! The solar system is the collection of celestial bodies that orbit our Sun. It consists of eight planets, numerous moons, asteroids, comets, and other objects. The planets, in order from closest to farthest from the Sun, are: Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune. Each planet has its own unique characteristics and features. Is there a specific aspect of the solar system you would like to know more about?")
+        // Second user message (with cache control)
+        .addUserMessageOfBlockParams(List.of(
+            ContentBlockParam.ofText(TextBlockParam.builder()
+                .text("Good to know.")
+                .build()),
+            ContentBlockParam.ofText(TextBlockParam.builder()
+                .text("Tell me more about Mars.")
+                .cacheControl(CacheControlEphemeral.builder().build())
+                .build())))
+        .build();
+
+    Message message = client.messages().create(params);
+    System.out.println(message);
+  }
+}
+```
+
+In this example, we demonstrate how to use prompt caching in a multi-turn conversation.
+
+During each turn, we mark the final block of the final message with `cache_control` so the conversation can be incrementally cached. The system will automatically lookup and use the longest previously cached prefix for follow-up messages. That is, blocks that were previously marked with a `cache_control` block are later not marked with this, but they will still be considered a cache hit (and also a cache refresh!) if they are hit within 5 minutes.
+
+In addition, note that the `cache_control` parameter is placed on the system message. This is to ensure that if this gets evicted from the cache (after not being used for more than 5 minutes), it will get added back to the cache on the next request.
+
+This approach is useful for maintaining context in ongoing conversations without repeatedly processing the same information.
+
+When this is set up properly, you should see the following in the usage response of each request:
+
+- `input_tokens`: Number of tokens in the new user message (will be minimal)
+- `cache_creation_input_tokens`: Number of tokens in the new assistant and user turns
+- `cache_read_input_tokens`: Number of tokens in the conversation up to the previous turn
+
+```bash
+curl https://api.anthropic.com/v1/messages \
+    --header "x-api-key: $ANTHROPIC_API_KEY" \
+    --header "anthropic-version: 2023-06-01" \
+    --header "content-type: application/json" \
+    --data \
+    '{
+        "model": "claude-sonnet-4-5",
+        "max_tokens": 1024,
+        "tools": [
+            {
+                "name": "search_documents",
+                "description": "Search through the knowledge base",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search query"
+                        }
+                    },
+                    "required": ["query"]
+                }
+            },
+            {
+                "name": "get_document",
+                "description": "Retrieve a specific document by ID",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "doc_id": {
+                            "type": "string",
+                            "description": "Document ID"
+                        }
+                    },
+                    "required": ["doc_id"]
+                },
+                "cache_control": {"type": "ephemeral"}
+            }
+        ],
+        "system": [
+            {
+                "type": "text",
+                "text": "You are a helpful research assistant with access to a document knowledge base.\n\n# Instructions\n- Always search for relevant documents before answering\n- Provide citations for your sources\n- Be objective and accurate in your responses\n- If multiple documents contain relevant information, synthesize them\n- Acknowledge when information is not available in the knowledge base",
+                "cache_control": {"type": "ephemeral"}
+            },
+            {
+                "type": "text",
+                "text": "# Knowledge Base Context\n\nHere are the relevant documents for this conversation:\n\n## Document 1: Solar System Overview\nThe solar system consists of the Sun and all objects that orbit it...\n\n## Document 2: Planetary Characteristics\nEach planet has unique features. Mercury is the smallest planet...\n\n## Document 3: Mars Exploration\nMars has been a target of exploration for decades...\n\n[Additional documents...]",
+                "cache_control": {"type": "ephemeral"}
+            }
+        ],
+        "messages": [
+            {
+                "role": "user",
+                "content": "Can you search for information about Mars rovers?"
+            },
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "tool_1",
+                        "name": "search_documents",
+                        "input": {"query": "Mars rovers"}
+                    }
+                ]
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "tool_1",
+                        "content": "Found 3 relevant documents: Document 3 (Mars Exploration), Document 7 (Rover Technology), Document 9 (Mission History)"
+                    }
+                ]
+            },
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "I found 3 relevant documents about Mars rovers. Let me get more details from the Mars Exploration document."
+                    }
+                ]
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Yes, please tell me about the Perseverance rover specifically.",
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+            }
+        ]
+    }'
+```
+
+```Python
+import anthropic
+client = anthropic.Anthropic()
+
+response = client.messages.create(
+    model="claude-sonnet-4-5",
+    max_tokens=1024,
+    tools=[
+        {
+            "name": "search_documents",
+            "description": "Search through the knowledge base",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query"
+                    }
+                },
+                "required": ["query"]
+            }
+        },
+        {
+            "name": "get_document",
+            "description": "Retrieve a specific document by ID",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "doc_id": {
+                        "type": "string",
+                        "description": "Document ID"
+                    }
+                },
+                "required": ["doc_id"]
+            },
+            "cache_control": {"type": "ephemeral"}
+        }
+    ],
+    system=[
+        {
+            "type": "text",
+            "text": "You are a helpful research assistant with access to a document knowledge base.\n\n# Instructions\n- Always search for relevant documents before answering\n- Provide citations for your sources\n- Be objective and accurate in your responses\n- If multiple documents contain relevant information, synthesize them\n- Acknowledge when information is not available in the knowledge base",
+            "cache_control": {"type": "ephemeral"}
+        },
+        {
+            "type": "text",
+            "text": "# Knowledge Base Context\n\nHere are the relevant documents for this conversation:\n\n## Document 1: Solar System Overview\nThe solar system consists of the Sun and all objects that orbit it...\n\n## Document 2: Planetary Characteristics\nEach planet has unique features. Mercury is the smallest planet...\n\n## Document 3: Mars Exploration\nMars has been a target of exploration for decades...\n\n[Additional documents...]",
+            "cache_control": {"type": "ephemeral"}
+        }
+    ],
+    messages=[
+        {
+            "role": "user",
+            "content": "Can you search for information about Mars rovers?"
+        },
+        {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "tool_1",
+                    "name": "search_documents",
+                    "input": {"query": "Mars rovers"}
+                }
+            ]
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "tool_1",
+                    "content": "Found 3 relevant documents: Document 3 (Mars Exploration), Document 7 (Rover Technology), Document 9 (Mission History)"
+                }
+            ]
+        },
+        {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "I found 3 relevant documents about Mars rovers. Let me get more details from the Mars Exploration document."
+                }
+            ]
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Yes, please tell me about the Perseverance rover specifically.",
+                    "cache_control": {"type": "ephemeral"}
+                }
+            ]
+        }
+    ]
+)
+print(response.model_dump_json())
+```
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk';
+
+const client = new Anthropic();
+
+const response = await client.messages.create({
+	model: 'claude-sonnet-4-5',
+	max_tokens: 1024,
+	tools: [
+		{
+			name: 'search_documents',
+			description: 'Search through the knowledge base',
+			input_schema: {
+				type: 'object',
+				properties: {
+					query: {
+						type: 'string',
+						description: 'Search query',
+					},
+				},
+				required: ['query'],
+			},
+		},
+		{
+			name: 'get_document',
+			description: 'Retrieve a specific document by ID',
+			input_schema: {
+				type: 'object',
+				properties: {
+					doc_id: {
+						type: 'string',
+						description: 'Document ID',
+					},
+				},
+				required: ['doc_id'],
+			},
+			cache_control: { type: 'ephemeral' },
+		},
+	],
+	system: [
+		{
+			type: 'text',
+			text: 'You are a helpful research assistant with access to a document knowledge base.\n\n# Instructions\n- Always search for relevant documents before answering\n- Provide citations for your sources\n- Be objective and accurate in your responses\n- If multiple documents contain relevant information, synthesize them\n- Acknowledge when information is not available in the knowledge base',
+			cache_control: { type: 'ephemeral' },
+		},
+		{
+			type: 'text',
+			text: '# Knowledge Base Context\n\nHere are the relevant documents for this conversation:\n\n## Document 1: Solar System Overview\nThe solar system consists of the Sun and all objects that orbit it...\n\n## Document 2: Planetary Characteristics\nEach planet has unique features. Mercury is the smallest planet...\n\n## Document 3: Mars Exploration\nMars has been a target of exploration for decades...\n\n[Additional documents...]',
+			cache_control: { type: 'ephemeral' },
+		},
+	],
+	messages: [
+		{
+			role: 'user',
+			content: 'Can you search for information about Mars rovers?',
+		},
+		{
+			role: 'assistant',
+			content: [
+				{
+					type: 'tool_use',
+					id: 'tool_1',
+					name: 'search_documents',
+					input: { query: 'Mars rovers' },
+				},
+			],
+		},
+		{
+			role: 'user',
+			content: [
+				{
+					type: 'tool_result',
+					tool_use_id: 'tool_1',
+					content: 'Found 3 relevant documents: Document 3 (Mars Exploration), Document 7 (Rover Technology), Document 9 (Mission History)',
+				},
+			],
+		},
+		{
+			role: 'assistant',
+			content: [
+				{
+					type: 'text',
+					text: 'I found 3 relevant documents about Mars rovers. Let me get more details from the Mars Exploration document.',
+				},
+			],
+		},
+		{
+			role: 'user',
+			content: [
+				{
+					type: 'text',
+					text: 'Yes, please tell me about the Perseverance rover specifically.',
+					cache_control: { type: 'ephemeral' },
+				},
+			],
+		},
+	],
+});
+console.log(response);
+```
+
+```java
+import java.util.List;
+import java.util.Map;
+
+import com.anthropic.client.AnthropicClient;
+import com.anthropic.client.okhttp.AnthropicOkHttpClient;
+import com.anthropic.core.JsonValue;
+import com.anthropic.models.messages.CacheControlEphemeral;
+import com.anthropic.models.messages.ContentBlockParam;
+import com.anthropic.models.messages.Message;
+import com.anthropic.models.messages.MessageCreateParams;
+import com.anthropic.models.messages.Model;
+import com.anthropic.models.messages.TextBlockParam;
+import com.anthropic.models.messages.Tool;
+import com.anthropic.models.messages.Tool.InputSchema;
+import com.anthropic.models.messages.ToolResultBlockParam;
+import com.anthropic.models.messages.ToolUseBlockParam;
+
+public class MultipleCacheBreakpointsExample {
+
+  public static void main(String[] args) {
+    AnthropicClient client = AnthropicOkHttpClient.fromEnv();
+
+    // Search tool schema
+    InputSchema searchSchema = InputSchema.builder()
+        .properties(JsonValue.from(Map.of(
+            "query", Map.of(
+                "type", "string",
+                "description", "Search query"))))
+        .putAdditionalProperty("required", JsonValue.from(List.of("query")))
+        .build();
+
+    // Get document tool schema
+    InputSchema getDocSchema = InputSchema.builder()
+        .properties(JsonValue.from(Map.of(
+            "doc_id", Map.of(
+                "type", "string",
+                "description", "Document ID"))))
+        .putAdditionalProperty("required", JsonValue.from(List.of("doc_id")))
+        .build();
+
+    MessageCreateParams params = MessageCreateParams.builder()
+        .model(Model.CLAUDE_OPUS_4_20250514)
+        .maxTokens(1024)
+        // Tools with cache control on the last one
+        .addTool(Tool.builder()
+            .name("search_documents")
+            .description("Search through the knowledge base")
+            .inputSchema(searchSchema)
+            .build())
+        .addTool(Tool.builder()
+            .name("get_document")
+            .description("Retrieve a specific document by ID")
+            .inputSchema(getDocSchema)
+            .cacheControl(CacheControlEphemeral.builder().build())
+            .build())
+        // System prompts with cache control on instructions and context separately
+        .systemOfTextBlockParams(List.of(
+            TextBlockParam.builder()
+                .text(
+                    "You are a helpful research assistant with access to a document knowledge base.\n\n# Instructions\n- Always search for relevant documents before answering\n- Provide citations for your sources\n- Be objective and accurate in your responses\n- If multiple documents contain relevant information, synthesize them\n- Acknowledge when information is not available in the knowledge base")
+                .cacheControl(CacheControlEphemeral.builder().build())
+                .build(),
+            TextBlockParam.builder()
+                .text(
+                    "# Knowledge Base Context\n\nHere are the relevant documents for this conversation:\n\n## Document 1: Solar System Overview\nThe solar system consists of the Sun and all objects that orbit it...\n\n## Document 2: Planetary Characteristics\nEach planet has unique features. Mercury is the smallest planet...\n\n## Document 3: Mars Exploration\nMars has been a target of exploration for decades...\n\n[Additional documents...]")
+                .cacheControl(CacheControlEphemeral.builder().build())
+                .build()))
+        // Conversation history
+        .addUserMessage("Can you search for information about Mars rovers?")
+        .addAssistantMessageOfBlockParams(List.of(
+            ContentBlockParam.ofToolUse(ToolUseBlockParam.builder()
+                .id("tool_1")
+                .name("search_documents")
+                .input(JsonValue.from(Map.of("query", "Mars rovers")))
+                .build())))
+        .addUserMessageOfBlockParams(List.of(
+            ContentBlockParam.ofToolResult(ToolResultBlockParam.builder()
+                .toolUseId("tool_1")
+                .content(
+                    "Found 3 relevant documents: Document 3 (Mars Exploration), Document 7 (Rover Technology), Document 9 (Mission History)")
+                .build())))
+        .addAssistantMessageOfBlockParams(List.of(
+            ContentBlockParam.ofText(TextBlockParam.builder()
+                .text(
+                    "I found 3 relevant documents about Mars rovers. Let me get more details from the Mars Exploration document.")
+                .build())))
+        .addUserMessageOfBlockParams(List.of(
+            ContentBlockParam.ofText(TextBlockParam.builder()
+                .text("Yes, please tell me about the Perseverance rover specifically.")
+                .cacheControl(CacheControlEphemeral.builder().build())
+                .build())))
+        .build();
+
+    Message message = client.messages().create(params);
+    System.out.println(message);
+  }
+}
+```
+
+This comprehensive example demonstrates how to use all 4 available cache breakpoints to optimize different parts of your prompt:
+
+1. **Tools cache** (cache breakpoint 1): The `cache_control` parameter on the last tool definition caches all tool definitions.
+
+2. **Reusable instructions cache** (cache breakpoint 2): The static instructions in the system prompt are cached separately. These instructions rarely change between requests.
+
+3. **RAG context cache** (cache breakpoint 3): The knowledge base documents are cached independently, allowing you to update the RAG documents without invalidating the tools or instructions cache.
+
+4. **Conversation history cache** (cache breakpoint 4): The assistant's response is marked with `cache_control` to enable incremental caching of the conversation as it progresses.
+
+This approach provides maximum flexibility:
+
+- If you only update the final user message, all four cache segments are reused
+- If you update the RAG documents but keep the same tools and instructions, the first two cache segments are reused
+- If you change the conversation but keep the same tools, instructions, and documents, the first three segments are reused
+- Each cache breakpoint can be invalidated independently based on what changes in your application
+
+For the first request:
+
+- `input_tokens`: Tokens in the final user message
+- `cache_creation_input_tokens`: Tokens in all cached segments (tools + instructions + RAG documents + conversation history)
+- `cache_read_input_tokens`: 0 (no cache hits)
+
+For subsequent requests with only a new user message:
+
+- `input_tokens`: Tokens in the new user message only
+- `cache_creation_input_tokens`: Any new tokens added to conversation history
+- `cache_read_input_tokens`: All previously cached tokens (tools + instructions + RAG documents + previous conversation)
+
+This pattern is especially powerful for:
+
+- RAG applications with large document contexts
+- Agent systems that use multiple tools
+- Long-running conversations that need to maintain context
+- Applications that need to optimize different parts of the prompt independently
 
 ---
 
 ### FAQ
 
-    **In most cases, a single cache breakpoint at the end of your static content is sufficient.** The system automatically checks for cache hits at all previous content block boundaries (up to 20 blocks before your breakpoint) and uses the longest matching prefix.
+**In most cases, a single cache breakpoint at the end of your static content is sufficient.** The system automatically checks for cache hits at all previous content block boundaries (up to 20 blocks before your breakpoint) and uses the longest matching prefix.
 
-    You only need multiple breakpoints if:
+You only need multiple breakpoints if:
 
-    * You have more than 20 content blocks before your desired cache point
-    * You want to cache sections that update at different frequencies independently
-    * You need explicit control over what gets cached for cost optimization
+- You have more than 20 content blocks before your desired cache point
+- You want to cache sections that update at different frequencies independently
+- You need explicit control over what gets cached for cost optimization
 
-    Example: If you have system instructions (rarely change) and RAG context (changes daily), you might use two breakpoints to cache them separately.
+Example: If you have system instructions (rarely change) and RAG context (changes daily), you might use two breakpoints to cache them separately.
 
+No, cache breakpoints themselves are free. You only pay for:
 
+- Writing content to cache (25% more than base input tokens for 5-minute TTL)
+- Reading from cache (10% of base input token price)
+- Regular input tokens for uncached content
 
+The number of breakpoints doesn't affect pricing - only the amount of content cached and read matters.
 
-    No, cache breakpoints themselves are free. You only pay for:
+The usage response includes three separate input token fields that together represent your total input:
 
-    * Writing content to cache (25% more than base input tokens for 5-minute TTL)
-    * Reading from cache (10% of base input token price)
-    * Regular input tokens for uncached content
+```text
+total_input_tokens = cache_read_input_tokens + cache_creation_input_tokens + input_tokens
+```
 
-    The number of breakpoints doesn't affect pricing - only the amount of content cached and read matters.
+- `cache_read_input_tokens`: Tokens retrieved from cache (everything before cache breakpoints that was cached)
+- `cache_creation_input_tokens`: New tokens being written to cache (at cache breakpoints)
+- `input_tokens`: Tokens **after the last cache breakpoint** that aren't cached
 
+**Important:** `input_tokens` does NOT represent all input tokens - only the portion after your last cache breakpoint. If you have cached content, `input_tokens` will typically be much smaller than your total input.
 
+**Example:** With a 200K token document cached and a 50 token user question:
 
+- `cache_read_input_tokens`: 200,000
+- `cache_creation_input_tokens`: 0
+- `input_tokens`: 50
+- **Total**: 200,050 tokens
 
-    The usage response includes three separate input token fields that together represent your total input:
+This breakdown is critical for understanding both your costs and rate limit usage. See [Tracking cache performance](#tracking-cache-performance) for more details.
 
-    ```
-    total_input_tokens = cache_read_input_tokens + cache_creation_input_tokens + input_tokens
-    ```
+The cache's default minimum lifetime (TTL) is 5 minutes. This lifetime is refreshed each time the cached content is used.
 
-    * `cache_read_input_tokens`: Tokens retrieved from cache (everything before cache breakpoints that was cached)
-    * `cache_creation_input_tokens`: New tokens being written to cache (at cache breakpoints)
-    * `input_tokens`: Tokens **after the last cache breakpoint** that aren't cached
+If you find that 5 minutes is too short, Anthropic also offers a [1-hour cache TTL](#1-hour-cache-duration).
 
-    **Important:** `input_tokens` does NOT represent all input tokens - only the portion after your last cache breakpoint. If you have cached content, `input_tokens` will typically be much smaller than your total input.
+You can define up to 4 cache breakpoints (using `cache_control` parameters) in your prompt.
 
-    **Example:** With a 200K token document cached and a 50 token user question:
+No, prompt caching is currently only available for Claude Opus 4.1, Claude Opus 4, Claude Sonnet 4.5, Claude Sonnet 4, Claude Sonnet 3.7, Claude Haiku 4.5, Claude Haiku 3.5, Claude Haiku 3, and Claude Opus 3 ([deprecated](https://docs.claude.com/en/docs/about-claude/model-deprecations)).
 
-    * `cache_read_input_tokens`: 200,000
-    * `cache_creation_input_tokens`: 0
-    * `input_tokens`: 50
-    * **Total**: 200,050 tokens
+Cached system prompts and tools will be reused when thinking parameters change. However, thinking changes (enabling/disabling or budget changes) will invalidate previously cached prompt prefixes with messages content.
 
-    This breakdown is critical for understanding both your costs and rate limit usage. See [Tracking cache performance](#tracking-cache-performance) for more details.
+For more details on cache invalidation, see [What invalidates the cache](#what-invalidates-the-cache).
 
+For more on extended thinking, including its interaction with tool use and prompt caching, see the [extended thinking documentation](https://docs.claude.com/en/docs/build-with-claude/extended-thinking#extended-thinking-and-prompt-caching).
 
+To enable prompt caching, include at least one `cache_control` breakpoint in your API request.
 
+Yes, prompt caching can be used alongside other API features like tool use and vision capabilities. However, changing whether there are images in a prompt or modifying tool use settings will break the cache.
 
-    The cache's default minimum lifetime (TTL) is 5 minutes. This lifetime is refreshed each time the cached content is used.
+For more details on cache invalidation, see [What invalidates the cache](#what-invalidates-the-cache).
 
-    If you find that 5 minutes is too short, Anthropic also offers a [1-hour cache TTL](#1-hour-cache-duration).
+Prompt caching introduces a new pricing structure where cache writes cost 25% more than base input tokens, while cache hits cost only 10% of the base input token price.
 
+Currently, there's no way to manually clear the cache. Cached prefixes automatically expire after a minimum of 5 minutes of inactivity.
 
+You can monitor cache performance using the `cache_creation_input_tokens` and `cache_read_input_tokens` fields in the API response.
 
+See [What invalidates the cache](#what-invalidates-the-cache) for more details on cache invalidation, including a list of changes that require creating a new cache entry.
 
-    You can define up to 4 cache breakpoints (using `cache_control` parameters) in your prompt.
+Prompt caching is designed with strong privacy and data separation measures:
 
+1. Cache keys are generated using a cryptographic hash of the prompts up to the cache control point. This means only requests with identical prompts can access a specific cache.
 
+2. Caches are organization-specific. Users within the same organization can access the same cache if they use identical prompts, but caches are not shared across different organizations, even for identical prompts.
 
-    No, prompt caching is currently only available for Claude Opus 4.1, Claude Opus 4, Claude Sonnet 4.5, Claude Sonnet 4, Claude Sonnet 3.7, Claude Haiku 4.5, Claude Haiku 3.5, Claude Haiku 3, and Claude Opus 3 ([deprecated](https://docs.claude.com/en/docs/about-claude/model-deprecations)).
+3. The caching mechanism is designed to maintain the integrity and privacy of each unique conversation or context.
 
+4. It's safe to use `cache_control` anywhere in your prompts. For cost efficiency, it's better to exclude highly variable parts (e.g., user's arbitrary input) from caching.
 
+These measures ensure that prompt caching maintains data privacy and security while offering performance benefits.
 
-    Cached system prompts and tools will be reused when thinking parameters change. However, thinking changes (enabling/disabling or budget changes) will invalidate previously cached prompt prefixes with messages content.
+Yes, it is possible to use prompt caching with your [Batches API](https://docs.claude.com/en/docs/build-with-claude/batch-processing) requests. However, because asynchronous batch requests can be processed concurrently and in any order, cache hits are provided on a best-effort basis.
 
-    For more details on cache invalidation, see [What invalidates the cache](#what-invalidates-the-cache).
+The [1-hour cache](#1-hour-cache-duration) can help improve your cache hits. The most cost effective way of using it is the following:
 
-    For more on extended thinking, including its interaction with tool use and prompt caching, see the [extended thinking documentation](https://docs.claude.com/en/docs/build-with-claude/extended-thinking#extended-thinking-and-prompt-caching).
+- Gather a set of message requests that have a shared prefix.
+- Send a batch request with just a single request that has this shared prefix and a 1-hour cache block. This will get written to the 1-hour cache.
+- As soon as this is complete, submit the rest of the requests. You will have to monitor the job to know when it completes.
 
+This is typically better than using the 5-minute cache simply because it’s common for batch requests to take between 5 minutes and 1 hour to complete. We’re considering ways to improve these cache hit rates and making this process more straightforward.
 
+This error typically appears when you have upgraded your SDK or you are using outdated code examples. Prompt caching is now generally available, so you no longer need the beta prefix. Instead of:
 
+```Python
+python client.beta.prompt_caching.messages.create(...)
+```
 
-    To enable prompt caching, include at least one `cache_control` breakpoint in your API request.
+Simply use:
 
+```Python
+python client.messages.create(...)
+```
 
+This error typically appears when you have upgraded your SDK or you are using outdated code examples. Prompt caching is now generally available, so you no longer need the beta prefix. Instead of:
 
-    Yes, prompt caching can be used alongside other API features like tool use and vision capabilities. However, changing whether there are images in a prompt or modifying tool use settings will break the cache.
+```typescript
+client.beta.promptCaching.messages.create(...)
+```
 
-    For more details on cache invalidation, see [What invalidates the cache](#what-invalidates-the-cache).
+Simply use:
 
-
-
-
-    Prompt caching introduces a new pricing structure where cache writes cost 25% more than base input tokens, while cache hits cost only 10% of the base input token price.
-
-
-
-    Currently, there's no way to manually clear the cache. Cached prefixes automatically expire after a minimum of 5 minutes of inactivity.
-
-
-
-    You can monitor cache performance using the `cache_creation_input_tokens` and `cache_read_input_tokens` fields in the API response.
-
-
-
-    See [What invalidates the cache](#what-invalidates-the-cache) for more details on cache invalidation, including a list of changes that require creating a new cache entry.
-
-
-
-    Prompt caching is designed with strong privacy and data separation measures:
-
-    1. Cache keys are generated using a cryptographic hash of the prompts up to the cache control point. This means only requests with identical prompts can access a specific cache.
-
-    2. Caches are organization-specific. Users within the same organization can access the same cache if they use identical prompts, but caches are not shared across different organizations, even for identical prompts.
-
-    3. The caching mechanism is designed to maintain the integrity and privacy of each unique conversation or context.
-
-    4. It's safe to use `cache_control` anywhere in your prompts. For cost efficiency, it's better to exclude highly variable parts (e.g., user's arbitrary input) from caching.
-
-    These measures ensure that prompt caching maintains data privacy and security while offering performance benefits.
-
-
-
-
-    Yes, it is possible to use prompt caching with your [Batches API](https://docs.claude.com/en/docs/build-with-claude/batch-processing) requests. However, because asynchronous batch requests can be processed concurrently and in any order, cache hits are provided on a best-effort basis.
-
-    The [1-hour cache](#1-hour-cache-duration) can help improve your cache hits. The most cost effective way of using it is the following:
-
-    * Gather a set of message requests that have a shared prefix.
-    * Send a batch request with just a single request that has this shared prefix and a 1-hour cache block. This will get written to the 1-hour cache.
-    * As soon as this is complete, submit the rest of the requests. You will have to monitor the job to know when it completes.
-
-    This is typically better than using the 5-minute cache simply because it’s common for batch requests to take between 5 minutes and 1 hour to complete. We’re considering ways to improve these cache hit rates and making this process more straightforward.
-
-
-
-
-    This error typically appears when you have upgraded your SDK or you are using outdated code examples. Prompt caching is now generally available, so you no longer need the beta prefix. Instead of:
-
-      ```Python
-      python client.beta.prompt_caching.messages.create(...)
-      ```
-
-
-    Simply use:
-
-
-      ```Python
-      python client.messages.create(...)
-      ```
-
-
-
-
-    This error typically appears when you have upgraded your SDK or you are using outdated code examples. Prompt caching is now generally available, so you no longer need the beta prefix. Instead of:
-
-    ```typescript
-    client.beta.promptCaching.messages.create(...)
-    ```
-
-    Simply use:
-
-    ```typescript
-    client.messages.create(...)
-    ```
+```typescript
+client.messages.create(...)
+```
 
 ---
 
@@ -2241,18 +2172,18 @@ import com.anthropic.models.messages.Model;
 
 public class CountTokensExample {
 
-    public static void main(String[] args) {
-        AnthropicClient client = AnthropicOkHttpClient.fromEnv();
+  public static void main(String[] args) {
+    AnthropicClient client = AnthropicOkHttpClient.fromEnv();
 
-        MessageCountTokensParams params = MessageCountTokensParams.builder()
-                .model(Model.CLAUDE_SONNET_4_20250514)
-                .system("You are a scientist")
-                .addUserMessage("Hello, Claude")
-                .build();
+    MessageCountTokensParams params = MessageCountTokensParams.builder()
+        .model(Model.CLAUDE_SONNET_4_20250514)
+        .system("You are a scientist")
+        .addUserMessage("Hello, Claude")
+        .build();
 
-        MessageTokensCount count = client.messages().countTokens(params);
-        System.out.println(count);
-    }
+    MessageTokensCount count = client.messages().countTokens(params);
+    System.out.println(count);
+  }
 }
 ```
 
@@ -2353,32 +2284,30 @@ import com.anthropic.models.messages.Tool.InputSchema;
 
 public class CountTokensWithToolsExample {
 
-    public static void main(String[] args) {
-        AnthropicClient client = AnthropicOkHttpClient.fromEnv();
+  public static void main(String[] args) {
+    AnthropicClient client = AnthropicOkHttpClient.fromEnv();
 
-        InputSchema schema = InputSchema.builder()
-                .properties(JsonValue.from(Map.of(
-                        "location", Map.of(
-                                "type", "string",
-                                "description", "The city and state, e.g. San Francisco, CA"
-                        )
-                )))
-                .putAdditionalProperty("required", JsonValue.from(List.of("location")))
-                .build();
+    InputSchema schema = InputSchema.builder()
+        .properties(JsonValue.from(Map.of(
+            "location", Map.of(
+                "type", "string",
+                "description", "The city and state, e.g. San Francisco, CA"))))
+        .putAdditionalProperty("required", JsonValue.from(List.of("location")))
+        .build();
 
-        MessageCountTokensParams params = MessageCountTokensParams.builder()
-                .model(Model.CLAUDE_SONNET_4_20250514)
-                .addTool(Tool.builder()
-                        .name("get_weather")
-                        .description("Get the current weather in a given location")
-                        .inputSchema(schema)
-                        .build())
-                .addUserMessage("What's the weather like in San Francisco?")
-                .build();
+    MessageCountTokensParams params = MessageCountTokensParams.builder()
+        .model(Model.CLAUDE_SONNET_4_20250514)
+        .addTool(Tool.builder()
+            .name("get_weather")
+            .description("Get the current weather in a given location")
+            .inputSchema(schema)
+            .build())
+        .addUserMessage("What's the weather like in San Francisco?")
+        .build();
 
-        MessageTokensCount count = client.messages().countTokens(params);
-        System.out.println(count);
-    }
+    MessageTokensCount count = client.messages().countTokens(params);
+    System.out.println(count);
+  }
 }
 ```
 
@@ -2500,40 +2429,40 @@ import java.net.http.HttpResponse;
 
 public class CountTokensImageExample {
 
-    public static void main(String[] args) throws Exception {
-        AnthropicClient client = AnthropicOkHttpClient.fromEnv();
+  public static void main(String[] args) throws Exception {
+    AnthropicClient client = AnthropicOkHttpClient.fromEnv();
 
-        String imageUrl = "https://upload.wikimedia.org/wikipedia/commons/a/a7/Camponotus_flavomarginatus_ant.jpg";
-        String imageMediaType = "image/jpeg";
+    String imageUrl = "https://upload.wikimedia.org/wikipedia/commons/a/a7/Camponotus_flavomarginatus_ant.jpg";
+    String imageMediaType = "image/jpeg";
 
-        HttpClient httpClient = HttpClient.newHttpClient();
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(imageUrl))
-                .build();
-        byte[] imageBytes = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray()).body();
-        String imageBase64 = Base64.getEncoder().encodeToString(imageBytes);
+    HttpClient httpClient = HttpClient.newHttpClient();
+    HttpRequest request = HttpRequest.newBuilder()
+        .uri(URI.create(imageUrl))
+        .build();
+    byte[] imageBytes = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray()).body();
+    String imageBase64 = Base64.getEncoder().encodeToString(imageBytes);
 
-        ContentBlockParam imageBlock = ContentBlockParam.ofImage(
-                ImageBlockParam.builder()
-                        .source(Base64ImageSource.builder()
-                                .mediaType(Base64ImageSource.MediaType.IMAGE_JPEG)
-                                .data(imageBase64)
-                                .build())
-                        .build());
+    ContentBlockParam imageBlock = ContentBlockParam.ofImage(
+        ImageBlockParam.builder()
+            .source(Base64ImageSource.builder()
+                .mediaType(Base64ImageSource.MediaType.IMAGE_JPEG)
+                .data(imageBase64)
+                .build())
+            .build());
 
-        ContentBlockParam textBlock = ContentBlockParam.ofText(
-                TextBlockParam.builder()
-                        .text("Describe this image")
-                        .build());
+    ContentBlockParam textBlock = ContentBlockParam.ofText(
+        TextBlockParam.builder()
+            .text("Describe this image")
+            .build());
 
-        MessageCountTokensParams params = MessageCountTokensParams.builder()
-                .model(Model.CLAUDE_SONNET_4_20250514)
-                .addUserMessageOfBlockParams(List.of(imageBlock, textBlock))
-                .build();
+    MessageCountTokensParams params = MessageCountTokensParams.builder()
+        .model(Model.CLAUDE_SONNET_4_20250514)
+        .addUserMessageOfBlockParams(List.of(imageBlock, textBlock))
+        .build();
 
-        MessageTokensCount count = client.messages().countTokens(params);
-        System.out.println(count);
-    }
+    MessageTokensCount count = client.messages().countTokens(params);
+    System.out.println(count);
+  }
 }
 ```
 
@@ -2682,30 +2611,29 @@ import com.anthropic.models.messages.ThinkingBlockParam;
 
 public class CountTokensThinkingExample {
 
-    public static void main(String[] args) {
-        AnthropicClient client = AnthropicOkHttpClient.fromEnv();
+  public static void main(String[] args) {
+    AnthropicClient client = AnthropicOkHttpClient.fromEnv();
 
-        List<ContentBlockParam> assistantBlocks = List.of(
-                ContentBlockParam.ofThinking(ThinkingBlockParam.builder()
-                        .thinking("This is a nice number theory question. Let's think about it step by step...")
-                        .signature("EuYBCkQYAiJAgCs1le6/Pol5Z4/JMomVOouGrWdhYNsH3ukzUECbB6iWrSQtsQuRHJID6lWV...")
-                        .build()),
-                ContentBlockParam.ofText(TextBlockParam.builder()
-                        .text("Yes, there are infinitely many prime numbers p such that p mod 4 = 3...")
-                        .build())
-        );
+    List<ContentBlockParam> assistantBlocks = List.of(
+        ContentBlockParam.ofThinking(ThinkingBlockParam.builder()
+            .thinking("This is a nice number theory question. Let's think about it step by step...")
+            .signature("EuYBCkQYAiJAgCs1le6/Pol5Z4/JMomVOouGrWdhYNsH3ukzUECbB6iWrSQtsQuRHJID6lWV...")
+            .build()),
+        ContentBlockParam.ofText(TextBlockParam.builder()
+            .text("Yes, there are infinitely many prime numbers p such that p mod 4 = 3...")
+            .build()));
 
-        MessageCountTokensParams params = MessageCountTokensParams.builder()
-                .model(Model.CLAUDE_SONNET_4_20250514)
-                .enabledThinking(16000)
-                .addUserMessage("Are there an infinite number of prime numbers such that n mod 4 == 3?")
-                .addAssistantMessageOfBlockParams(assistantBlocks)
-                .addUserMessage("Can you write a formal proof?")
-                .build();
+    MessageCountTokensParams params = MessageCountTokensParams.builder()
+        .model(Model.CLAUDE_SONNET_4_20250514)
+        .enabledThinking(16000)
+        .addUserMessage("Are there an infinite number of prime numbers such that n mod 4 == 3?")
+        .addAssistantMessageOfBlockParams(assistantBlocks)
+        .addUserMessage("Can you write a formal proof?")
+        .build();
 
-        MessageTokensCount count = client.messages().countTokens(params);
-        System.out.println(count);
-    }
+    MessageTokensCount count = client.messages().countTokens(params);
+    System.out.println(count);
+  }
 }
 ```
 
@@ -2829,33 +2757,33 @@ import com.anthropic.models.messages.TextBlockParam;
 
 public class CountTokensPdfExample {
 
-    public static void main(String[] args) throws Exception {
-        AnthropicClient client = AnthropicOkHttpClient.fromEnv();
+  public static void main(String[] args) throws Exception {
+    AnthropicClient client = AnthropicOkHttpClient.fromEnv();
 
-        byte[] fileBytes = Files.readAllBytes(Path.of("document.pdf"));
-        String pdfBase64 = Base64.getEncoder().encodeToString(fileBytes);
+    byte[] fileBytes = Files.readAllBytes(Path.of("document.pdf"));
+    String pdfBase64 = Base64.getEncoder().encodeToString(fileBytes);
 
-        ContentBlockParam documentBlock = ContentBlockParam.ofDocument(
-                DocumentBlockParam.builder()
-                        .source(Base64PdfSource.builder()
-                                .mediaType(Base64PdfSource.MediaType.APPLICATION_PDF)
-                                .data(pdfBase64)
-                                .build())
-                        .build());
+    ContentBlockParam documentBlock = ContentBlockParam.ofDocument(
+        DocumentBlockParam.builder()
+            .source(Base64PdfSource.builder()
+                .mediaType(Base64PdfSource.MediaType.APPLICATION_PDF)
+                .data(pdfBase64)
+                .build())
+            .build());
 
-        ContentBlockParam textBlock = ContentBlockParam.ofText(
-                TextBlockParam.builder()
-                        .text("Please summarize this document.")
-                        .build());
+    ContentBlockParam textBlock = ContentBlockParam.ofText(
+        TextBlockParam.builder()
+            .text("Please summarize this document.")
+            .build());
 
-        MessageCountTokensParams params = MessageCountTokensParams.builder()
-                .model(Model.CLAUDE_SONNET_4_20250514)
-                .addUserMessageOfBlockParams(List.of(documentBlock, textBlock))
-                .build();
+    MessageCountTokensParams params = MessageCountTokensParams.builder()
+        .model(Model.CLAUDE_SONNET_4_20250514)
+        .addUserMessageOfBlockParams(List.of(documentBlock, textBlock))
+        .build();
 
-        MessageTokensCount count = client.messages().countTokens(params);
-        System.out.println(count);
-    }
+    MessageTokensCount count = client.messages().countTokens(params);
+    System.out.println(count);
+  }
 }
 ```
 
